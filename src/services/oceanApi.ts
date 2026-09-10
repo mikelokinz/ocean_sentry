@@ -1,4 +1,4 @@
-import type { Station, AnomalyStatus } from '../types/ocean';
+import type { Station, AnomalyStatus, OilSpillRecord } from '../types/ocean';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const STREAM_URL = import.meta.env.VITE_ARGO_STREAM_URL;
@@ -396,6 +396,56 @@ export async function fetchLocalOceanState(lat: number, lon: number, depth: numb
   } catch {
     return null;
   }
+}
+
+export async function fetchOilSpills(): Promise<OilSpillRecord[]> {
+  try {
+    const res = await fetchJson<{ count: number; incidents: OilSpillRecord[] }>('/api/ml/oil-spills');
+    return res.incidents || [];
+  } catch (err) {
+    console.error('Error fetching oil spills:', err);
+    return [];
+  }
+}
+
+export async function fetchOilSpillDetail(spillId: string): Promise<OilSpillRecord | null> {
+  try {
+    return await fetchJson<OilSpillRecord>(`/api/ml/oil-spills/${spillId}`);
+  } catch (err) {
+    console.error(`Error fetching oil spill detail for ${spillId}:`, err);
+    return null;
+  }
+}
+
+export async function runPresetOilSpillDetection(preset: 'spill' | 'clean', threshold: number = 0.8): Promise<any> {
+  return await fetchJson(`/api/ml/oil-spills/run-preset/${preset}?threshold=${threshold}`);
+}
+
+export async function detectOilSpillUpload(file: File, threshold: number = 0.8): Promise<any> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('threshold', threshold.toString());
+
+  const response = await fetch(`${API_BASE}/api/ml/oil-spills/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(`Inference request failed with status ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function triggerOilSpillAlert(spillId: string, message?: string): Promise<any> {
+  const response = await fetch(`${API_BASE}/api/ml/oil-spills/alert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spill_id: spillId, message }),
+  });
+  if (!response.ok) {
+    throw new Error(`Alert dispatch failed with status ${response.status}`);
+  }
+  return await response.json();
 }
 
 export type { ApiStation, ComparisonRecord, HealthResponse };

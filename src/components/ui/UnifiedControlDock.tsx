@@ -20,6 +20,10 @@ interface UnifiedControlDockProps {
   onArgoChange?: (show: boolean) => void;
   showGlider?: boolean;
   onGliderChange?: (show: boolean) => void;
+  showOilSpill?: boolean;
+  onOilSpillChange?: (show: boolean) => void;
+  oilSpillCount?: number;
+  onOpenOilSpillLab?: () => void;
 }
 
 type TabSection = 'all' | 'layers' | 'params' | 'depth' | 'winds';
@@ -67,6 +71,10 @@ export function UnifiedControlDock({
   onArgoChange,
   showGlider = true,
   onGliderChange,
+  showOilSpill = false,
+  onOilSpillChange,
+  oilSpillCount = 0,
+  onOpenOilSpillLab,
 }: UnifiedControlDockProps) {
   const [activeTab, setActiveTab] = useState<TabSection>('all');
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -331,6 +339,72 @@ export function UnifiedControlDock({
               >
                 <div style={{ position: 'absolute', top: '2px', left: showGlider ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s ease' }} />
               </button>
+            </div>
+
+            {/* OIL SPILL HAZARD RADAR (ML) Toggle */}
+            <div
+              style={{
+                marginTop: '14px',
+                paddingTop: '12px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: showOilSpill ? '#ef4444' : '#64748b',
+                    boxShadow: showOilSpill ? '0 0 8px #ef4444' : 'none',
+                  }}
+                />
+                <div>
+                  <div style={{ fontSize: '11px', color: showOilSpill ? '#f87171' : '#cbd5e1', fontWeight: 600 }}>
+                    Oil Spill Radar (ML)
+                  </div>
+                  {oilSpillCount > 0 && (
+                    <div style={{ fontSize: '9px', color: '#ef4444', fontFamily: 'monospace' }}>
+                      {oilSpillCount} ACTIVE SPILL HAZARDS
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {onOpenOilSpillLab && (
+                  <button
+                    onClick={onOpenOilSpillLab}
+                    title="Open SAR ML Diagnostic Lab"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '9px',
+                      color: '#fca5a5',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    LAB
+                  </button>
+                )}
+                <button
+                  onClick={() => onOilSpillChange?.(!showOilSpill)}
+                  style={{
+                    width: '36px', height: '20px', borderRadius: '10px',
+                    background: showOilSpill ? '#ef4444' : 'rgba(255, 255, 255, 0.1)',
+                    border: 'none', position: 'relative', cursor: 'pointer',
+                    transition: 'background 0.2s ease',
+                  }}
+                >
+                  <div style={{ position: 'absolute', top: '2px', left: showOilSpill ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s ease' }} />
+                </button>
+              </div>
             </div>
           </div>
         )}

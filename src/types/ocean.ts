@@ -90,3 +90,34 @@ export interface ParameterConfig {
   max: number;
   colors: [string, string, string]; // low, mid, high
 }
+
+export interface OilSpillRecord {
+  id: string;
+  name: string;
+  location_name: string;
+  latitude: number;
+  longitude: number;
+  depth: number;
+  status: 'oil_detected' | 'uncertain' | 'no_oil_detected';
+  confidence: number;
+  area_km2: number;
+  spillage_percentage: number;
+  detected_spills_count: number;
+  detected_at: string;
+  severity: 'critical' | 'high' | 'moderate';
+  sar_image_url: string;
+  mask_overlay_base64?: string;
+  raw_mask_base64?: string;
+  recommended_action: string;
+  source_satellite?: string;
+  drift_vector?: {
+    speed_knots: number;
+    heading_deg: number;
+    direction: string;
+  };
+  wind_surface?: {
+    speed_kts: number;
+    dir_deg: number;
+  };
+  water_temp_c?: number;
+}

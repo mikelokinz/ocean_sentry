@@ -32,10 +32,12 @@ import { WIND_SYSTEMS_CONFIG } from '../components/ui/WindControlPanel';
 import type { WindSystemType } from '../components/ui/WindControlPanel';
 import { AnomalyDetailPanel } from '../components/ui/AnomalyDetailPanel';
 import { IntelligenceSummary } from '../components/ui/IntelligenceSummary';
+import { OilSpillMarkers } from '../components/scene/OilSpillMarkers';
+import { OilSpillModal } from '../components/ui/OilSpillModal';
 import { useHandGesture } from '../hooks/useHandGesture';
 import { useOceanData } from '../hooks/useOceanData';
-import type { Station, OceanLayer, OceanParameter, DepthLevel, CameraStage } from '../types/ocean';
-import type { AnomalyRecord } from '../services/oceanApi';
+import type { Station, OceanLayer, OceanParameter, DepthLevel, CameraStage, OilSpillRecord } from '../types/ocean';
+import { fetchOilSpills, type AnomalyRecord } from '../services/oceanApi';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { CinematicTransitionManagerHandle } from '../components/scene/CinematicTransitionManager';
 import type { CinematicTransitionState } from '../hooks/useCinematicTransition';
@@ -66,6 +68,10 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
   const [showEEZ, setShowEEZ] = useState(false);
   const [showArgo, setShowArgo] = useState(true);
   const [showGlider, setShowGlider] = useState(true);
+  const [oilSpills, setOilSpills] = useState<OilSpillRecord[]>([]);
+  const [selectedOilSpill, setSelectedOilSpill] = useState<OilSpillRecord | null>(null);
+  const [showOilSpill, setShowOilSpill] = useState<boolean>(true);
+  const [isOilSpillLabOpen, setIsOilSpillLabOpen] = useState<boolean>(false);
 
   // Local Ocean / Dive state
   const [viewMode, setViewMode] = useState<'global' | 'localOcean'>('global');
@@ -112,6 +118,14 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    fetchOilSpills().then(spills => {
+      if (spills && spills.length > 0) {
+        setOilSpills(spills);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -236,6 +250,13 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
   const handleAnomalySelect = useCallback((anomaly: AnomalyRecord) => {
     setSelectedAnomaly(anomaly);
     setSelectedStation(null);
+    setSelectedOilSpill(null);
+  }, []);
+
+  const handleOilSpillSelect = useCallback((spill: OilSpillRecord) => {
+    setSelectedOilSpill(spill);
+    setSelectedStation(null);
+    setSelectedAnomaly(null);
   }, []);
 
   const handleTransitionStateChange = useCallback((state: CinematicTransitionState) => {
@@ -411,6 +432,16 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
           <IndiaEEZ visible={showEEZ} />
         )}
 
+        {/* Oil Spill ML Hazard Layer (3D Balls on Globe) */}
+        {viewMode === 'global' && (
+          <OilSpillMarkers
+            spills={oilSpills}
+            selectedId={selectedOilSpill?.id ?? null}
+            visible={showOilSpill}
+            onSelect={handleOilSpillSelect}
+          />
+        )}
+
         {/* Depth-specific markers (subsurface mode) */}
         {viewMode === 'global' && (
           <SubsurfaceMarkers
@@ -430,7 +461,13 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
         <CameraController
           stage={stage}
-          targetStation={selectedAnomaly ? { latitude: selectedAnomaly.latitude, longitude: selectedAnomaly.longitude } : selectedStation}
+          targetStation={
+            selectedOilSpill
+              ? { latitude: selectedOilSpill.latitude, longitude: selectedOilSpill.longitude }
+              : selectedAnomaly
+              ? { latitude: selectedAnomaly.latitude, longitude: selectedAnomaly.longitude }
+              : selectedStation
+          }
           isExploring={isExploring}
           handDelta={hand.deltaRot}
           handZoom={hand.zoomFactor}
@@ -533,6 +570,17 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         />
       )}
 
+      {/* Oil Spill Incident Telemetry & Diagnostic Modal */}
+      {(selectedOilSpill || isOilSpillLabOpen) && (
+        <OilSpillModal
+          spill={selectedOilSpill || (oilSpills.length > 0 ? oilSpills[0] : null)}
+          onClose={() => {
+            setSelectedOilSpill(null);
+            setIsOilSpillLabOpen(false);
+          }}
+        />
+      )}
+
       {/* Dive Button — Bottom Center (when at surface and exploring) */}
       {showControls && isExploring && !isSubsurface && (
         <DiveButton
@@ -603,6 +651,10 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
               onArgoChange={setShowArgo}
               showGlider={showGlider}
               onGliderChange={setShowGlider}
+              showOilSpill={showOilSpill}
+              onOilSpillChange={setShowOilSpill}
+              oilSpillCount={oilSpills.length}
+              onOpenOilSpillLab={() => setIsOilSpillLabOpen(true)}
             />
           </div>
 

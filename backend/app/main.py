@@ -12,6 +12,7 @@ from app.api.routes_ingest import router as ingest_router
 from app.api.routes_fisherman import router as fisherman_router
 from app.api.routes_subscriptions import router as subscriptions_router
 from app.api.routes_pipeline import router as pipeline_router
+from app.api.routes_oil_spill import router as oil_spill_router
 from app.services.ml_service import ml_service
 from app.services.anomaly_service import anomaly_service
 from app.services.ocean_service import ocean_service
@@ -47,6 +48,7 @@ app.include_router(ingest_router, prefix="/api")
 app.include_router(fisherman_router, prefix="/api")
 app.include_router(subscriptions_router, prefix="/api")
 app.include_router(pipeline_router, prefix="/api")
+app.include_router(oil_spill_router, prefix="/api")
 
 
 @app.on_event("startup")
