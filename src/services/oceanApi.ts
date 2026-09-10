@@ -322,6 +322,82 @@ export async function fetchIngestFormats(): Promise<any> {
   return fetchJson('/api/ocean/ingest/formats');
 }
 
+export interface DataStatus {
+  status: 'latest_available' | 'stale' | 'unavailable';
+  copernicus_latest_timestamp: string | null;
+  argo_latest_timestamp: string | null;
+  last_refresh_timestamp: string | null;
+  data_window: { start: string; end: string } | null;
+  total_records: number;
+  anomaly_count: number;
+  using_last_known_good: boolean;
+  data_source: string;
+}
+
+export async function fetchDataStatus(): Promise<DataStatus> {
+  return fetchJson('/api/ocean/data-status');
+}
+
+export interface LocalOceanState {
+  latitude: number;
+  longitude: number;
+  depth: number;
+  timestamp: string | null;
+  temperature: number | null;
+  salinity: number | null;
+  current_u: number | null;
+  current_v: number | null;
+  current_speed: number | null;
+  current_direction_deg: number | null;
+  model_temperature: number | null;
+  model_salinity: number | null;
+  anomaly_score: number | null;
+  anomaly_status: string | null;
+  model_observation_difference: number | null;
+  wave_height: null;
+  data_source: string;
+}
+
+export async function fetchLocalOceanState(lat: number, lon: number, depth: number = 0): Promise<LocalOceanState | null> {
+  try {
+    const obs = await fetchJson<ObservationRecord[]>(
+      `/api/ocean/observations?lat_min=${lat - 0.5}&lat_max=${lat + 0.5}&lon_min=${lon - 0.5}&lon_max=${lon + 0.5}&depth=${depth}&limit=1`
+    );
+    if (!obs || obs.length === 0) return null;
+    const r = obs[0];
+    const u = r.model_current_u ?? 0;
+    const v = r.model_current_v ?? 0;
+    const speed = Math.sqrt(u * u + v * v);
+    const dirRad = Math.atan2(v, u);
+    const dirDeg = ((dirRad * 180 / Math.PI) + 360) % 360;
+    return {
+      latitude: r.latitude,
+      longitude: r.longitude,
+      depth: r.depth,
+      timestamp: r.timestamp,
+      temperature: r.observed_temperature,
+      salinity: r.observed_salinity,
+      current_u: r.model_current_u,
+      current_v: r.model_current_v,
+      current_speed: speed,
+      current_direction_deg: dirDeg,
+      model_temperature: r.model_temperature,
+      model_salinity: r.model_salinity,
+      anomaly_score: r.abs_temperature_difference != null
+        ? Math.min(1, Math.abs(r.abs_temperature_difference) / 5)
+        : null,
+      anomaly_status: r.abs_temperature_difference != null
+        ? (Math.abs(r.abs_temperature_difference) >= 2.5 ? 'high' : Math.abs(r.abs_temperature_difference) >= 1.5 ? 'warning' : 'normal')
+        : null,
+      model_observation_difference: r.temperature_difference,
+      wave_height: null,
+      data_source: 'Copernicus Marine + Argo',
+    };
+  } catch {
+    return null;
+  }
+}
+
 export type { ApiStation, ComparisonRecord, HealthResponse };
 
 

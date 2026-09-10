@@ -136,11 +136,172 @@ canvas {
   color: #38bdf8 !important;
 }
 
-/* Keyframes for subtle animations only */
+/* ═══════════════════════════════════════════════════════════════════
+   TACTICAL AEROSPACE HUD TEXTURES & GLASSMORPHISM
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Micro-dot matrix background texture */
+.tactical-dots-bg {
+  background-image: radial-gradient(rgba(34, 211, 238, 0.12) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+/* High-tech tactical grid mesh */
+.tactical-grid-bg {
+  background-image: 
+    linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* Holographic subtle scanlines */
+.tactical-scanlines {
+  background-image: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  );
+  background-size: 100% 4px;
+}
+
+/* Multi-layer frosted glass panel with specular rim lighting */
+.tactical-glass {
+  background: linear-gradient(135deg, rgba(3, 11, 28, 0.82) 0%, rgba(1, 6, 18, 0.90) 100%);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  box-shadow: 
+    0 16px 40px -10px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 20px rgba(2, 12, 34, 0.5),
+    0 0 24px rgba(34, 211, 238, 0.06);
+  position: relative;
+}
+
+/* Floating tactical card */
+.tactical-card {
+  background: rgba(4, 14, 34, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tactical-card:hover {
+  background: rgba(6, 20, 48, 0.8);
+  border-color: rgba(34, 211, 238, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(34, 211, 238, 0.08);
+}
+
+/* Tactile Glass Button */
+.tactical-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+.tactical-btn:hover {
+  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: #f8fafc;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.15);
+}
+.tactical-btn:active {
+  transform: scale(0.98);
+}
+
+/* Active Highlight Pill */
+.tactical-btn-active {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.18) 0%, rgba(6, 78, 120, 0.25) 100%) !important;
+  border-color: rgba(34, 211, 238, 0.6) !important;
+  color: #38bdf8 !important;
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Tactical Corner Brackets */
+.tactical-bracket-box {
+  position: relative;
+}
+.tactical-bracket-box::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 6px;
+  height: 6px;
+  border-top: 2px solid rgba(34, 211, 238, 0.7);
+  border-left: 2px solid rgba(34, 211, 238, 0.7);
+  pointer-events: none;
+}
+.tactical-bracket-box::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 6px;
+  height: 6px;
+  border-bottom: 2px solid rgba(34, 211, 238, 0.7);
+  border-right: 2px solid rgba(34, 211, 238, 0.7);
+  pointer-events: none;
+}
+
+/* Luminous Glowing Status Indicators */
+.led-pulse {
+  animation: led-pulse-anim 2s infinite ease-in-out;
+}
+@keyframes led-pulse-anim {
+  0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 4px currentColor); }
+  50% { opacity: 0.55; transform: scale(0.9); filter: drop-shadow(0 0 1px currentColor); }
+}
+
+/* Keyframes */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 1px currentColor; }
+  50%       { box-shadow: 0 0 12px 3px currentColor; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes scanline-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
 
-.animate-fade-in { animation: fadeIn 0.4s ease forwards; }
+.animate-fade-in   { animation: fadeIn 0.4s ease forwards; }
+.animate-fade-up   { animation: fadeUp 0.8s ease forwards; }
+.animate-pulse-ring{ animation: pulse-ring 2s ease-out infinite; }
+.animate-glow      { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 20s linear infinite; }
+
+/* Legacy glass class compatibility */
+.glass {
+  background: rgba(3, 12, 30, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(34, 211, 238, 0.16);
+}
+
+.instrument {
+  background: rgba(2, 8, 20, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.12);
+}
 

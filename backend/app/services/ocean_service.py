@@ -127,6 +127,14 @@ class OceanService:
         self._stations_cache = stations
         logger.info(f"Built {len(stations)} station entries from profiles")
 
+    def reload(self):
+        """Re-read data from disk and rebuild stations cache."""
+        logger.info("Reloading ocean data from disk...")
+        self._collocated = None
+        self._stations_cache = None
+        self._load_data()
+        logger.info("Ocean data reload complete.")
+
     def apply_ml_status(self, anomaly_service):
         """Override station statuses with ML-derived results."""
         if self._stations_cache is None or not anomaly_service.is_available:

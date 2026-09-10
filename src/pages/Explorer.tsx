@@ -92,6 +92,10 @@ export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
     loadDepthData, clearDepthData, reload,
   } = useOceanData();
 
+  const meanCurrentSpeed = STATIONS.length > 0
+    ? STATIONS.reduce((sum, s) => sum + s.currentSpeed, 0) / STATIONS.length
+    : undefined;
+
   const [webglGpu, setWebglGpu] = useState<string>('');
 
   useEffect(() => {
@@ -342,6 +346,7 @@ export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
             visible={effectiveShowParticles}
             parameter={parameter}
             depth={depth}
+            meanCurrentSpeed={meanCurrentSpeed}
           />
         )}
 

@@ -1,0 +1,696 @@
+{
+  "name": "Ocean Sentry - Core Data Integration Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Trigger — Ocean Data Refresh",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule — 6h Refresh",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/health",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "health-check",
+      "name": "Backend Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "backend-ok",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "check-backend-available",
+      "name": "Backend Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { error: 'backend_unavailable', message: 'Ocean Sentry backend is not reachable. Ensure FastAPI is running on the configured OCEAN_SENTRY_API_URL.', timestamp: new Date().toISOString() } }];"
+      },
+      "id": "error-backend-down",
+      "name": "Error — Backend Unavailable",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/api/ocean/refresh",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "trigger-live-refresh",
+      "name": "Trigger Live Data Refresh",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route refresh result to appropriate path\nconst result = $input.first().json;\nconst status = result.status;\n\n// Log the result\nconst logMessage = status === 'updated'\n  ? `New data fetched. Dataset updated to ${result.new_timestamp}. Duration: ${result.duration_seconds}s. Records: model=${result.records?.model}, argo=${result.records?.argo}, collocated=${result.records?.collocated}, anomalies=${result.records?.anomalies}`\n  : status === 'no_new_data'\n  ? `No new data available. Current dataset: ${result.dataset_timestamp}. Duration: ${result.duration_seconds}s`\n  : `Refresh error: ${result.message}. Duration: ${result.duration_seconds}s`;\n\nreturn [{\n  json: {\n    ...result,\n    log_message: logMessage,\n    is_updated: status === 'updated',\n    is_no_new_data: status === 'no_new_data',\n    is_error: status === 'error'\n  }\n}];"
+      },
+      "id": "process-refresh-result",
+      "name": "Process Refresh Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "check-updated",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "refresh-ok",
+      "name": "Refresh OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nreturn [{\n  json: {\n    error: 'refresh_failed',\n    message: result.message || 'Live data refresh failed',\n    status: result.status,\n    checked_at: result.checked_at,\n    duration_seconds: result.duration_seconds,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "error-refresh-failed",
+      "name": "Error — Refresh Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/ocean/model?limit=500&lat_min=5.0&lat_max=18.0&lon_min=80.0&lon_max=92.0",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-model-data",
+      "name": "Fetch Numerical Model",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/ocean/observations?limit=500&lat_min=5.0&lat_max=18.0&lon_min=80.0&lon_max=92.0",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-argo-data",
+      "name": "Fetch Argo Observations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate numerical model data from Ocean Sentry backend\nconst items = $input.all();\nconst rawData = items[0].json;\n\n// The backend returns an array of records\nconst records = Array.isArray(rawData) ? rawData : [rawData];\n\nconst valid = [];\nconst invalid = [];\n\nfor (const record of records) {\n  const issues = [];\n\n  // Check required coordinate fields\n  if (record.latitude === undefined || record.latitude === null) {\n    issues.push('missing_latitude');\n  } else if (record.latitude < -90 || record.latitude > 90) {\n    issues.push('invalid_latitude');\n  }\n\n  if (record.longitude === undefined || record.longitude === null) {\n    issues.push('missing_longitude');\n  } else if (record.longitude < -180 || record.longitude > 360) {\n    issues.push('invalid_longitude');\n  }\n\n  // Check depth\n  if (record.depth !== undefined && record.depth !== null) {\n    if (record.depth < 0 || record.depth > 11000) {\n      issues.push('invalid_depth');\n    }\n  }\n\n  // Check timestamp\n  if (record.timestamp === undefined || record.timestamp === null) {\n    issues.push('missing_timestamp');\n  } else {\n    const ts = new Date(record.timestamp);\n    if (isNaN(ts.getTime())) {\n      issues.push('invalid_timestamp');\n    }\n  }\n\n  // Check model has at least one ocean variable\n  const hasTemp = record.model_temperature !== undefined && record.model_temperature !== null;\n  const hasSal = record.model_salinity !== undefined && record.model_salinity !== null;\n  const hasCurrU = record.model_current_u !== undefined && record.model_current_u !== null;\n  const hasCurrV = record.model_current_v !== undefined && record.model_current_v !== null;\n\n  if (!hasTemp && !hasSal && !hasCurrU && !hasCurrV) {\n    issues.push('no_model_variables');\n  }\n\n  // Temperature range check (GTSPP bounds)\n  if (hasTemp && (record.model_temperature < -2.5 || record.model_temperature > 40.0)) {\n    issues.push('model_temperature_out_of_range');\n  }\n\n  // Salinity range check\n  if (hasSal && (record.model_salinity < 2.0 || record.model_salinity > 41.0)) {\n    issues.push('model_salinity_out_of_range');\n  }\n\n  if (issues.length === 0) {\n    valid.push(record);\n  } else {\n    invalid.push({ record, issues });\n  }\n}\n\nreturn [{\n  json: {\n    source: 'numerical_model',\n    data_provider: 'Copernicus Marine (GLOBAL_ANALYSISFORECAST_PHY_001_024)',\n    region: 'Bay of Bengal',\n    total_received: records.length,\n    valid_count: valid.length,\n    invalid_count: invalid.length,\n    validation_timestamp: new Date().toISOString(),\n    records: valid,\n    validation_issues: invalid.length > 0 ? invalid.slice(0, 5) : []\n  }\n}];"
+      },
+      "id": "validate-model-data",
+      "name": "Validate Model Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate Argo observation data from Ocean Sentry backend\nconst items = $input.all();\nconst rawData = items[0].json;\n\nconst records = Array.isArray(rawData) ? rawData : [rawData];\n\nconst valid = [];\nconst invalid = [];\n\nfor (const record of records) {\n  const issues = [];\n\n  // Check required coordinate fields\n  if (record.latitude === undefined || record.latitude === null) {\n    issues.push('missing_latitude');\n  } else if (record.latitude < -90 || record.latitude > 90) {\n    issues.push('invalid_latitude');\n  }\n\n  if (record.longitude === undefined || record.longitude === null) {\n    issues.push('missing_longitude');\n  } else if (record.longitude < -180 || record.longitude > 360) {\n    issues.push('invalid_longitude');\n  }\n\n  // Check depth (Argo profiles can be 0-2000m)\n  if (record.depth !== undefined && record.depth !== null) {\n    if (record.depth < 0 || record.depth > 6000) {\n      issues.push('invalid_depth');\n    }\n  }\n\n  // Check timestamp\n  if (record.timestamp === undefined || record.timestamp === null) {\n    issues.push('missing_timestamp');\n  } else {\n    const ts = new Date(record.timestamp);\n    if (isNaN(ts.getTime())) {\n      issues.push('invalid_timestamp');\n    }\n  }\n\n  // Check observation has at least one measurement\n  const hasTemp = record.observed_temperature !== undefined && record.observed_temperature !== null;\n  const hasSal = record.observed_salinity !== undefined && record.observed_salinity !== null;\n\n  if (!hasTemp && !hasSal) {\n    issues.push('no_observation_variables');\n  }\n\n  // Temperature range check\n  if (hasTemp && (record.observed_temperature < -2.5 || record.observed_temperature > 40.0)) {\n    issues.push('observed_temperature_out_of_range');\n  }\n\n  // Salinity range check\n  if (hasSal && (record.observed_salinity < 2.0 || record.observed_salinity > 41.0)) {\n    issues.push('observed_salinity_out_of_range');\n  }\n\n  // Check QC flag if available (quality_flag = 1 means passed backend QC)\n  if (record.observation_quality !== undefined && record.observation_quality === 4) {\n    issues.push('qc_flag_bad');\n  }\n\n  if (issues.length === 0) {\n    valid.push(record);\n  } else {\n    invalid.push({ record, issues });\n  }\n}\n\nreturn [{\n  json: {\n    source: 'argo_observations',\n    data_provider: 'ArgoVis API (real Argo float profiles)',\n    region: 'Bay of Bengal',\n    total_received: records.length,\n    valid_count: valid.length,\n    invalid_count: invalid.length,\n    validation_timestamp: new Date().toISOString(),\n    records: valid,\n    validation_issues: invalid.length > 0 ? invalid.slice(0, 5) : []\n  }\n}];"
+      },
+      "id": "validate-argo-data",
+      "name": "Validate Argo Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize model data into the common integration schema\nconst input = $input.first().json;\nconst records = input.records || [];\n\nconst normalized = records.map(r => ({\n  source: 'model',\n  source_product: 'Copernicus Marine GLOBAL_ANALYSISFORECAST_PHY_001_024',\n  latitude: r.latitude,\n  longitude: r.longitude,\n  depth: r.depth || 0,\n  timestamp: r.timestamp,\n  temperature: r.model_temperature ?? null,\n  salinity: r.model_salinity ?? null,\n  current_u: r.model_current_u ?? null,\n  current_v: r.model_current_v ?? null,\n  sea_level: r.model_sea_level ?? null,\n  qc_status: 'model_output'\n}));\n\nreturn [{\n  json: {\n    source: 'model',\n    record_count: normalized.length,\n    schema_version: '1.0',\n    normalized_at: new Date().toISOString(),\n    records: normalized\n  }\n}];"
+      },
+      "id": "normalize-model-schema",
+      "name": "Normalize Model Schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Argo observation data into the common integration schema\nconst input = $input.first().json;\nconst records = input.records || [];\n\nconst normalized = records.map(r => ({\n  source: 'argo',\n  source_product: 'ArgoVis - Real Argo Float Profiles',\n  latitude: r.latitude,\n  longitude: r.longitude,\n  depth: r.depth || 0,\n  timestamp: r.timestamp,\n  temperature: r.observed_temperature ?? null,\n  salinity: r.observed_salinity ?? null,\n  current_u: null,\n  current_v: null,\n  sea_level: null,\n  qc_status: r.observation_quality === 1 ? 'qc_passed' : 'unverified',\n  spatial_distance_km: r.spatial_distance_km ?? null\n}));\n\nreturn [{\n  json: {\n    source: 'argo',\n    record_count: normalized.length,\n    schema_version: '1.0',\n    normalized_at: new Date().toISOString(),\n    records: normalized\n  }\n}];"
+      },
+      "id": "normalize-argo-schema",
+      "name": "Normalize Argo Schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-ocean-sources",
+      "name": "Merge Ocean Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Spatial filtering: keep only records within the Bay of Bengal focus region\n// This region matches the backend's Copernicus data bounding box\nconst items = $input.all();\n\n// Bay of Bengal focus region (matches backend data)\nconst REGION = {\n  lat_min: 5.0,\n  lat_max: 18.0,\n  lon_min: 80.0,\n  lon_max: 92.0\n};\n\nlet modelRecords = [];\nlet argoRecords = [];\nlet totalInput = 0;\nlet filteredOut = 0;\n\nfor (const item of items) {\n  const data = item.json;\n  const records = data.records || [];\n  totalInput += records.length;\n\n  for (const r of records) {\n    const inRegion = (\n      r.latitude >= REGION.lat_min &&\n      r.latitude <= REGION.lat_max &&\n      r.longitude >= REGION.lon_min &&\n      r.longitude <= REGION.lon_max\n    );\n\n    if (inRegion) {\n      if (r.source === 'model') {\n        modelRecords.push(r);\n      } else {\n        argoRecords.push(r);\n      }\n    } else {\n      filteredOut++;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    stage: 'spatial_filtering',\n    region: REGION,\n    region_name: 'Bay of Bengal',\n    total_input: totalInput,\n    total_in_region: modelRecords.length + argoRecords.length,\n    filtered_out: filteredOut,\n    model_records: modelRecords.length,\n    argo_records: argoRecords.length,\n    filter_timestamp: new Date().toISOString(),\n    model_data: modelRecords,\n    argo_data: argoRecords\n  }\n}];"
+      },
+      "id": "filter-region",
+      "name": "Filter Region",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Temporal matching: only retain records within a reasonable time window\nconst input = $input.first().json;\nconst modelData = input.model_data || [];\nconst argoData = input.argo_data || [];\n\nconst TIME_TOLERANCE_HOURS = 12;\n\nconst modelTimes = modelData\n  .map(r => new Date(r.timestamp).getTime())\n  .filter(t => !isNaN(t));\n\nif (modelTimes.length === 0) {\n  return [{\n    json: {\n      stage: 'temporal_matching',\n      error: 'no_model_timestamps',\n      message: 'No valid model timestamps found',\n      model_count: 0,\n      argo_count: 0,\n      matched_argo: [],\n      model_data: []\n    }\n  }];\n}\n\nconst modelTimeMin = Math.min(...modelTimes);\nconst modelTimeMax = Math.max(...modelTimes);\nconst toleranceMs = TIME_TOLERANCE_HOURS * 3600 * 1000;\n\nconst timeMatchedArgo = [];\nconst timeUnmatched = [];\n\nfor (const argo of argoData) {\n  const argoTime = new Date(argo.timestamp).getTime();\n  if (isNaN(argoTime)) {\n    timeUnmatched.push({ record: argo, reason: 'invalid_timestamp' });\n    continue;\n  }\n\n  if (argoTime >= (modelTimeMin - toleranceMs) && argoTime <= (modelTimeMax + toleranceMs)) {\n    timeMatchedArgo.push(argo);\n  } else {\n    timeUnmatched.push({ record: argo, reason: 'outside_model_time_window' });\n  }\n}\n\nreturn [{\n  json: {\n    stage: 'temporal_matching',\n    time_tolerance_hours: TIME_TOLERANCE_HOURS,\n    model_time_range: {\n      start: new Date(modelTimeMin).toISOString(),\n      end: new Date(modelTimeMax).toISOString()\n    },\n    model_count: modelData.length,\n    argo_input: argoData.length,\n    argo_time_matched: timeMatchedArgo.length,\n    argo_time_unmatched: timeUnmatched.length,\n    match_timestamp: new Date().toISOString(),\n    model_data: modelData,\n    matched_argo: timeMatchedArgo\n  }\n}];"
+      },
+      "id": "match-time",
+      "name": "Match Time",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Spatial matching: pair each Argo observation with the nearest model grid point\nconst input = $input.first().json;\nconst modelData = input.model_data || [];\nconst argoData = input.matched_argo || [];\n\nconst MAX_DISTANCE_KM = 50.0;\n\nfunction haversine(lat1, lon1, lat2, lon2) {\n  const R = 6371.0;\n  const dLat = (lat2 - lat1) * Math.PI / 180;\n  const dLon = (lon2 - lon1) * Math.PI / 180;\n  const a = Math.sin(dLat / 2) ** 2 +\n    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *\n    Math.sin(dLon / 2) ** 2;\n  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));\n}\n\nconst matched = [];\nconst unmatched = [];\n\nfor (const argo of argoData) {\n  let bestModel = null;\n  let bestDist = Infinity;\n\n  for (const model of modelData) {\n    if (Math.abs(model.latitude - argo.latitude) > 0.5 ||\n        Math.abs(model.longitude - argo.longitude) > 0.5) {\n      continue;\n    }\n\n    const dist = haversine(argo.latitude, argo.longitude, model.latitude, model.longitude);\n    if (dist < bestDist) {\n      bestDist = dist;\n      bestModel = model;\n    }\n  }\n\n  if (bestModel !== null && bestDist <= MAX_DISTANCE_KM) {\n    matched.push({\n      argo: argo,\n      model: bestModel,\n      spatial_distance_km: Math.round(bestDist * 100) / 100\n    });\n  } else {\n    unmatched.push({\n      argo_lat: argo.latitude,\n      argo_lon: argo.longitude,\n      nearest_distance_km: bestDist === Infinity ? null : Math.round(bestDist * 100) / 100,\n      reason: bestDist === Infinity ? 'no_model_nearby' : 'exceeds_max_distance'\n    });\n  }\n}\n\nreturn [{\n  json: {\n    stage: 'spatial_matching',\n    max_distance_km: MAX_DISTANCE_KM,\n    model_points_available: modelData.length,\n    argo_input: argoData.length,\n    spatially_matched: matched.length,\n    spatially_unmatched: unmatched.length,\n    match_timestamp: new Date().toISOString(),\n    pairs: matched\n  }\n}];"
+      },
+      "id": "match-location",
+      "name": "Match Location",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare model predictions against real Argo observations\nconst input = $input.first().json;\nconst pairs = input.pairs || [];\n\nif (pairs.length === 0) {\n  return [{\n    json: {\n      stage: 'model_observation_comparison',\n      error: 'no_matched_pairs',\n      message: 'No spatially matched model-observation pairs available',\n      comparisons: [],\n      summary: { total: 0 }\n    }\n  }];\n}\n\nconst comparisons = [];\n\nfor (const pair of pairs) {\n  const model = pair.model;\n  const argo = pair.argo;\n\n  const comparison = {\n    latitude: argo.latitude,\n    longitude: argo.longitude,\n    depth: argo.depth,\n    timestamp: argo.timestamp,\n    spatial_distance_km: pair.spatial_distance_km,\n    parameters: []\n  };\n\n  if (model.temperature !== null && argo.temperature !== null) {\n    const diff = argo.temperature - model.temperature;\n    comparison.parameters.push({\n      parameter: 'temperature',\n      unit: '°C',\n      model_value: model.temperature,\n      observed_value: argo.temperature,\n      difference: Math.round(diff * 1000) / 1000,\n      absolute_difference: Math.round(Math.abs(diff) * 1000) / 1000,\n      observation_source: 'Argo'\n    });\n  }\n\n  if (model.salinity !== null && argo.salinity !== null) {\n    const diff = argo.salinity - model.salinity;\n    comparison.parameters.push({\n      parameter: 'salinity',\n      unit: 'PSU',\n      model_value: model.salinity,\n      observed_value: argo.salinity,\n      difference: Math.round(diff * 1000) / 1000,\n      absolute_difference: Math.round(Math.abs(diff) * 1000) / 1000,\n      observation_source: 'Argo'\n    });\n  }\n\n  if (comparison.parameters.length > 0) {\n    comparisons.push(comparison);\n  }\n}\n\nconst tempDiffs = comparisons\n  .flatMap(c => c.parameters)\n  .filter(p => p.parameter === 'temperature')\n  .map(p => p.absolute_difference);\n\nconst salDiffs = comparisons\n  .flatMap(c => c.parameters)\n  .filter(p => p.parameter === 'salinity')\n  .map(p => p.absolute_difference);\n\nfunction stats(arr) {\n  if (arr.length === 0) return null;\n  const sorted = [...arr].sort((a, b) => a - b);\n  return {\n    count: arr.length,\n    min: sorted[0],\n    max: sorted[sorted.length - 1],\n    mean: Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 1000) / 1000,\n    median: sorted[Math.floor(sorted.length / 2)]\n  };\n}\n\nreturn [{\n  json: {\n    stage: 'model_observation_comparison',\n    total_pairs: pairs.length,\n    comparisons_produced: comparisons.length,\n    comparison_timestamp: new Date().toISOString(),\n    summary: {\n      temperature: stats(tempDiffs),\n      salinity: stats(salDiffs)\n    },\n    comparisons: comparisons\n  }\n}];"
+      },
+      "id": "compare-model-vs-argo",
+      "name": "Compare Model vs Argo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deviation detection and quality flagging\nconst input = $input.first().json;\nconst comparisons = input.comparisons || [];\n\nconst THRESHOLDS = {\n  temperature: { warning: 1.5, high: 2.5 },\n  salinity: { warning: 0.8, high: 1.5 }\n};\n\nconst flagged = [];\nconst normal = [];\n\nfor (const comp of comparisons) {\n  let maxStatus = 'normal';\n  const flaggedParams = [];\n\n  for (const param of comp.parameters) {\n    const thresholds = THRESHOLDS[param.parameter];\n    if (!thresholds) continue;\n\n    let paramStatus = 'normal';\n    if (param.absolute_difference >= thresholds.high) {\n      paramStatus = 'significant_deviation';\n    } else if (param.absolute_difference >= thresholds.warning) {\n      paramStatus = 'warning';\n    }\n\n    param.deviation_status = paramStatus;\n    param.threshold_used = thresholds;\n\n    if (paramStatus === 'significant_deviation') {\n      maxStatus = 'significant_deviation';\n      flaggedParams.push(param.parameter);\n    } else if (paramStatus === 'warning' && maxStatus !== 'significant_deviation') {\n      maxStatus = 'warning';\n      flaggedParams.push(param.parameter);\n    }\n  }\n\n  comp.overall_status = maxStatus;\n  comp.flagged_parameters = flaggedParams;\n\n  if (maxStatus === 'normal') {\n    normal.push(comp);\n  } else {\n    flagged.push(comp);\n  }\n}\n\nreturn [{\n  json: {\n    stage: 'deviation_qc',\n    thresholds: THRESHOLDS,\n    total_comparisons: comparisons.length,\n    normal_count: normal.length,\n    warning_count: flagged.filter(f => f.overall_status === 'warning').length,\n    significant_deviation_count: flagged.filter(f => f.overall_status === 'significant_deviation').length,\n    qc_timestamp: new Date().toISOString(),\n    all_comparisons: comparisons,\n    flagged_records: flagged,\n    normal_records: normal\n  }\n}];"
+      },
+      "id": "deviation-qc",
+      "name": "Deviation / QC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare the final dataset for the 3D visualization frontend\nconst input = $input.first().json;\nconst allComparisons = input.all_comparisons || [];\n\nconst visualizationRecords = [];\n\nfor (const comp of allComparisons) {\n  for (const param of comp.parameters) {\n    visualizationRecords.push({\n      type: 'observation',\n      location: {\n        latitude: comp.latitude,\n        longitude: comp.longitude\n      },\n      depth: comp.depth,\n      timestamp: comp.timestamp,\n      parameter: param.parameter,\n      unit: param.unit,\n      value: param.observed_value,\n      source: 'argo',\n      status: comp.overall_status,\n      comparison: {\n        model_value: param.model_value,\n        observed_value: param.observed_value,\n        difference: param.difference,\n        absolute_difference: param.absolute_difference,\n        deviation_status: param.deviation_status\n      },\n      metadata: {\n        spatial_distance_km: comp.spatial_distance_km,\n        processing_timestamp: new Date().toISOString(),\n        pipeline: 'n8n_ocean_data_integration'\n      }\n    });\n  }\n}\n\nconst depthRange = visualizationRecords.length > 0 ? {\n  min: Math.min(...visualizationRecords.map(r => r.depth)),\n  max: Math.max(...visualizationRecords.map(r => r.depth))\n} : { min: 0, max: 0 };\n\nconst uniqueLocations = new Set(\n  visualizationRecords.map(r => `${r.location.latitude},${r.location.longitude}`)\n).size;\n\nreturn [{\n  json: {\n    stage: 'visualization_dataset',\n    dataset_version: '1.0',\n    pipeline: 'Ocean Sentry n8n Data Integration',\n    total_records: visualizationRecords.length,\n    unique_locations: uniqueLocations,\n    depth_range: depthRange,\n    parameters: [...new Set(visualizationRecords.map(r => r.parameter))],\n    status_distribution: {\n      normal: visualizationRecords.filter(r => r.status === 'normal').length,\n      warning: visualizationRecords.filter(r => r.status === 'warning').length,\n      significant_deviation: visualizationRecords.filter(r => r.status === 'significant_deviation').length\n    },\n    prepared_at: new Date().toISOString(),\n    records: visualizationRecords\n  }\n}];"
+      },
+      "id": "prepare-3d-dataset",
+      "name": "Prepare 3D Dataset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/ocean/data-status",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "verify-backend-data",
+      "name": "Verify — Backend Data Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final pipeline report: combines live refresh, n8n processing, and backend verification\nconst refreshResult = $('Process Refresh Result').first().json;\nconst n8nData = $('Prepare 3D Dataset').first().json;\nconst dataStatus = $input.first().json;\n\nreturn [{\n  json: {\n    pipeline_report: {\n      name: 'Ocean Sentry — Core Data Integration Pipeline',\n      purpose: 'Automated near-real-time data refresh with model-observation integration for 3D visualization',\n      completed_at: new Date().toISOString(),\n      status: 'success'\n    },\n    live_refresh: {\n      outcome: refreshResult.status,\n      duration_seconds: refreshResult.duration_seconds,\n      message: refreshResult.log_message,\n      previous_timestamp: refreshResult.previous_timestamp || null,\n      new_timestamp: refreshResult.new_timestamp || refreshResult.dataset_timestamp || null,\n      records_updated: refreshResult.records || null\n    },\n    data_sources: {\n      numerical_model: {\n        provider: 'Copernicus Marine Service',\n        product: 'GLOBAL_ANALYSISFORECAST_PHY_001_024',\n        variables: ['temperature', 'salinity', 'current_u', 'current_v'],\n        region: 'Bay of Bengal (5-18\\u00b0N, 80-92\\u00b0E)'\n      },\n      in_situ_observations: {\n        provider: 'Argo Program (via ArgoVis API)',\n        variables: ['temperature', 'salinity'],\n        qc_applied: true,\n        region: 'Bay of Bengal'\n      }\n    },\n    integration_summary: {\n      total_visualization_records: n8nData.total_records,\n      unique_locations: n8nData.unique_locations,\n      depth_range_m: n8nData.depth_range,\n      parameters_compared: n8nData.parameters,\n      status_distribution: n8nData.status_distribution\n    },\n    backend_verification: {\n      data_status: dataStatus.status,\n      last_refresh: dataStatus.last_refresh_timestamp,\n      total_records: dataStatus.total_records,\n      anomaly_count: dataStatus.anomaly_count,\n      data_source: dataStatus.data_source,\n      data_window: dataStatus.data_window\n    },\n    pipeline_parameters: {\n      refresh_interval_hours: 6,\n      spatial_tolerance_km: 50,\n      temporal_tolerance_hours: 12,\n      temperature_warning_threshold_C: 1.5,\n      temperature_deviation_threshold_C: 2.5,\n      salinity_warning_threshold_PSU: 0.8,\n      salinity_deviation_threshold_PSU: 1.5\n    },\n    architecture_note: 'Every six hours, n8n triggers the refresh service. The refresh service performs a lightweight metadata check against Copernicus. If no newer dataset is available, the pipeline exits without downloading. If newer data is available, it fetches the latest model and Argo observations, performs QC, spatial-temporal collocation and ML anomaly scoring, then atomically updates the datasets served by FastAPI. The 3D frontend automatically reads the refreshed data through the same APIs.'\n  }\n}];"
+      },
+      "id": "pipeline-report",
+      "name": "Pipeline Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## LIVE DATA REFRESH\n\nTriggers the backend's incremental refresh:\n1. Checks upstream Copernicus metadata\n2. If new data exists: fetches, processes (QC + collocation + ML), atomically updates\n3. If no new data: exits in ~7 seconds\n\n**Endpoint:** POST /api/ocean/refresh\n**Duration:** 7s (no new data) to ~3.5min (full refresh)",
+        "width": 500,
+        "height": 200
+      },
+      "id": "note-live-refresh",
+      "name": "Sticky Note — Live Refresh",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        860,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## DATA VALIDATION & INTEGRATION\n\nFetches refreshed data from the backend APIs, validates model and observation records,\nnormalizes into common schema, and performs spatial + temporal matching.\n\n**Spatial tolerance:** 50 km\n**Temporal tolerance:** 12 hours",
+        "width": 660,
+        "height": 160
+      },
+      "id": "note-integration",
+      "name": "Sticky Note — Integration",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## OCEAN ANALYSIS\n\nCompares numerical model predictions against real observations.\nDetects significant model-observation deviations.\n\nThresholds are configurable prototype parameters.",
+        "width": 520,
+        "height": 140
+      },
+      "id": "note-analysis",
+      "name": "Sticky Note — Analysis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3260,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## VERIFICATION & REPORT\n\nVerifies backend serves refreshed data via data-status API.\nProduces final pipeline report with refresh outcome, integration summary,\nand backend verification.\n\n**Destination:** Ocean Sentry 3D web platform (React + Three.js)",
+        "width": 520,
+        "height": 160
+      },
+      "id": "note-output",
+      "name": "Sticky Note — Output",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3980,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Trigger — Ocean Data Refresh": {
+      "main": [
+        [
+          {
+            "node": "Backend Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule — 6h Refresh": {
+      "main": [
+        [
+          {
+            "node": "Backend Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend Health Check": {
+      "main": [
+        [
+          {
+            "node": "Backend Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend Available?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Live Data Refresh",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error — Backend Unavailable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Live Data Refresh": {
+      "main": [
+        [
+          {
+            "node": "Process Refresh Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Refresh Result": {
+      "main": [
+        [
+          {
+            "node": "Refresh OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh OK?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Numerical Model",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Argo Observations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error — Refresh Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Numerical Model": {
+      "main": [
+        [
+          {
+            "node": "Validate Model Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Argo Observations": {
+      "main": [
+        [
+          {
+            "node": "Validate Argo Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Model Data": {
+      "main": [
+        [
+          {
+            "node": "Normalize Model Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Argo Data": {
+      "main": [
+        [
+          {
+            "node": "Normalize Argo Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Model Schema": {
+      "main": [
+        [
+          {
+            "node": "Merge Ocean Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Argo Schema": {
+      "main": [
+        [
+          {
+            "node": "Merge Ocean Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Ocean Sources": {
+      "main": [
+        [
+          {
+            "node": "Filter Region",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Region": {
+      "main": [
+        [
+          {
+            "node": "Match Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Time": {
+      "main": [
+        [
+          {
+            "node": "Match Location",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Location": {
+      "main": [
+        [
+          {
+            "node": "Compare Model vs Argo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Model vs Argo": {
+      "main": [
+        [
+          {
+            "node": "Deviation / QC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deviation / QC": {
+      "main": [
+        [
+          {
+            "node": "Prepare 3D Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare 3D Dataset": {
+      "main": [
+        [
+          {
+            "node": "Verify — Backend Data Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify — Backend Data Status": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "ocean-data"
+    },
+    {
+      "name": "core-pipeline"
+    },
+    {
+      "name": "data-integration"
+    },
+    {
+      "name": "live-refresh"
+    }
+  ],
+  "pinData": {},
+  "id": "zUsTRwulvzTXVWUy"
+}

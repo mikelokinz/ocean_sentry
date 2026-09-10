@@ -1,0 +1,111 @@
+{
+  "name": "Ocean Sentry - Scheduled Regional Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/subscriptions/check-alerts",
+        "options": {}
+      },
+      "id": "check-alerts",
+      "name": "Check Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has-alerts",
+              "leftValue": "={{ $json.alerts_count }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ]
+        }
+      },
+      "id": "has-alerts",
+      "name": "Any Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "alerts",
+        "options": {}
+      },
+      "id": "split-alerts",
+      "name": "Split Into Alerts",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [910, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "const alert = $input.first().json;\n\nlet msg = `🔔 *OCEAN SENTRY ALERT*\\n\\n`;\nmsg += `📍 Location: ${alert.latitude.toFixed(2)}° N, ${alert.longitude.toFixed(2)}° E\\n\\n`;\n\nfor (const reason of alert.reasons) {\n  msg += `⚠️ ${reason}\\n`;\n}\n\nmsg += `\\n🎣 Fishing Suitability: ${alert.suitability.toUpperCase()} (${(alert.suitability_score * 100).toFixed(0)}%)\\n`;\nmsg += `🌊 Sea Condition: ${alert.sea_condition.toUpperCase()}\\n`;\n\nif (alert.sst !== null) {\n  msg += `🌡 SST: ${alert.sst}°C\\n`;\n}\nif (alert.current_speed !== null) {\n  msg += `💨 Current: ${alert.current_speed} m/s\\n`;\n}\n\nmsg += `\\n_This is an automated Ocean Sentry alert. Reply /unsubscribe to stop._`;\n\nreturn [{ json: { chat_id: alert.chat_id, text: msg } }];"
+      },
+      "id": "format-alert",
+      "name": "Format Alert Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 250]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-alert",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1350, 250],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-cred",
+          "name": "Ocean Sentry Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Check Alerts", "type": "main", "index": 0 }]]
+    },
+    "Check Alerts": {
+      "main": [[{ "node": "Any Alerts?", "type": "main", "index": 0 }]]
+    },
+    "Any Alerts?": {
+      "main": [
+        [{ "node": "Split Into Alerts", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Split Into Alerts": {
+      "main": [[{ "node": "Format Alert Message", "type": "main", "index": 0 }]]
+    },
+    "Format Alert Message": {
+      "main": [[{ "node": "Send Alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

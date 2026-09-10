@@ -8,6 +8,7 @@ interface OceanCurrentsProps {
   visible: boolean;
   parameter?: OceanParameter;
   depth?: DepthLevel;
+  meanCurrentSpeed?: number;
 }
 
 interface FlowStream {
@@ -102,7 +103,7 @@ interface ParticleRecord {
   depthOffset: number;
 }
 
-export function OceanCurrents({ visible, parameter = 'waveHeight', depth = 0 }: OceanCurrentsProps) {
+export function OceanCurrents({ visible, parameter = 'waveHeight', depth = 0, meanCurrentSpeed }: OceanCurrentsProps) {
   const pointsRef = useRef<THREE.Points>(null!);
   const baseRadius = 2.025;
   const particleRecordsRef = useRef<ParticleRecord[]>([]);
@@ -179,7 +180,9 @@ export function OceanCurrents({ visible, parameter = 'waveHeight', depth = 0 }: 
 
     const depthDiminish = (depth / 1000) * 0.035;
     const currentRadius = baseRadius - depthDiminish;
-    const speedMult = parameter === 'currentSpeed' ? 1.5 : 1.0;
+    const realSpeedScale = meanCurrentSpeed != null ? THREE.MathUtils.clamp(meanCurrentSpeed / 0.3, 0.3, 3.0) : 1.0;
+    const paramBoost = parameter === 'currentSpeed' ? 1.5 : 1.0;
+    const speedMult = paramBoost * realSpeedScale;
 
     for (let i = 0; i < TOTAL_PARTICLES; i++) {
       const p = records[i];

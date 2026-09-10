@@ -9,9 +9,13 @@ from app.api.routes_comparison import router as comparison_router
 from app.api.routes_anomalies import router as anomalies_router
 from app.api.routes_argo import router as argo_router
 from app.api.routes_ingest import router as ingest_router
+from app.api.routes_fisherman import router as fisherman_router
+from app.api.routes_subscriptions import router as subscriptions_router
+from app.api.routes_pipeline import router as pipeline_router
 from app.services.ml_service import ml_service
 from app.services.anomaly_service import anomaly_service
 from app.services.ocean_service import ocean_service
+from app.services.fisherman_service import fisherman_service
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -21,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Ocean Sentry API",
-    description="Backend for ocean model-observation comparison and anomaly detection",
+    description="Backend for ocean model-observation comparison, anomaly detection & fisherman intelligence",
     version="0.1.0",
 )
 
@@ -40,7 +44,9 @@ app.include_router(comparison_router, prefix="/api")
 app.include_router(anomalies_router, prefix="/api")
 app.include_router(argo_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
-
+app.include_router(fisherman_router, prefix="/api")
+app.include_router(subscriptions_router, prefix="/api")
+app.include_router(pipeline_router, prefix="/api")
 
 
 @app.on_event("startup")
@@ -49,4 +55,6 @@ async def startup():
     ml_service.load_model()
     anomaly_service.run_inference(ml_service)
     ocean_service.apply_ml_status(anomaly_service)
+    fisherman_service.initialize(ocean_service, anomaly_service)
     logger.info("Startup complete")
+

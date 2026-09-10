@@ -1,0 +1,897 @@
+{
+  "name": "Ocean Sentry - Telegram Fisherman Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-cred",
+          "name": "Ocean Sentry Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classify incoming message type: location, voice, or text\nconst msg = $input.first().json.message || $input.first().json;\nconst chat_id = (msg.chat && msg.chat.id) ? msg.chat.id.toString() : '';\nconst first_name = (msg.from && msg.from.first_name) ? msg.from.first_name : 'Fisher';\n\nlet msg_type = 'text';\nif (msg.location) {\n  msg_type = 'location';\n} else if (msg.voice || msg.audio) {\n  msg_type = 'voice';\n}\n\nreturn [{\n  json: {\n    msg_type,\n    chat_id,\n    first_name,\n    text: msg.text || '',\n    location: msg.location || null,\n    voice: msg.voice || msg.audio || null,\n    message_id: msg.message_id || null,\n    raw: msg\n  }\n}];"
+      },
+      "id": "classify-input",
+      "name": "Classify Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "conditions": {
+          "string": [
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.msg_type }}",
+                  "rightValue": "location",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.msg_type }}",
+                  "rightValue": "voice",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.msg_type }}",
+                  "rightValue": "text",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "route-msg-type",
+      "name": "Route by Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract GPS and store location via backend\nconst input = $input.first().json;\n\nif (!input.location || input.location.latitude === undefined) {\n  return [{ json: { chat_id: input.chat_id || '', first_name: input.first_name || 'Fisher', lat: null, lon: null, error: 'no_location' } }];\n}\n\nconst lat = input.location.latitude;\nconst lon = input.location.longitude;\nconst chat_id = input.chat_id;\nconst first_name = input.first_name;\n\nreturn [{ json: { lat, lon, chat_id, first_name } }];"
+      },
+      "id": "extract-location",
+      "name": "Extract Location",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/location",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $json.chat_id }}" },
+            { "name": "latitude", "value": "={{ $json.lat }}" },
+            { "name": "longitude", "value": "={{ $json.lon }}" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "store-location",
+      "name": "Store Location",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/intelligence",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "latitude", "value": "={{ $('Extract Location').item.json.lat }}" },
+            { "name": "longitude", "value": "={{ $('Extract Location').item.json.lon }}" },
+            { "name": "radius_km", "value": "50" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-intelligence-location",
+      "name": "Fetch Intelligence (Location)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst loc = $('Extract Location').first().json;\n\nlet msg = `📍 *OCEAN SENTRY — LOCATION RECEIVED*\\n`;\nmsg += `${loc.lat.toFixed(4)}° N, ${loc.lon.toFixed(4)}° E\\n\\n`;\n\n// Suitability\nconst suitEmoji = data.suitability === 'high' ? '🟢' : data.suitability === 'moderate' ? '🟡' : data.suitability === 'low' ? '🔴' : '⚪';\nmsg += `🎣 *Fishing Suitability:* ${suitEmoji} ${data.suitability.toUpperCase()}\\n`;\nmsg += `Score: ${(data.suitability_score * 100).toFixed(0)}%\\n\\n`;\n\n// Environmental data\nif (data.sst && data.sst.availability === 'available') {\n  msg += `🌡 *SST:* ${data.sst.value}°C\\n`;\n}\nif (data.current_speed && data.current_speed.availability === 'available') {\n  msg += `🌊 *Current:* ${data.current_speed.value} m/s\\n`;\n}\nif (data.salinity && data.salinity.availability === 'available') {\n  msg += `🧂 *Salinity:* ${data.salinity.value} PSU\\n`;\n}\nif (data.chlorophyll && data.chlorophyll.availability === 'unavailable') {\n  msg += `🟢 *Chlorophyll:* unavailable\\n`;\n}\nif (data.wave_height && data.wave_height.availability === 'unavailable') {\n  msg += `🌊 *Wave Height:* unavailable\\n`;\n}\n\nmsg += `\\n🌊 *Sea Condition:* ${(data.sea_condition || 'unknown').toUpperCase()}\\n`;\n\n// Anomalies\nif (data.anomaly_count > 0) {\n  msg += `⚠️ *${data.anomaly_count} ocean anomalies* detected nearby\\n`;\n}\n\n// Recommended zone\nif (data.recommended_zone) {\n  const rz = data.recommended_zone;\n  msg += `\\n📌 *Recommended Zone:*\\n`;\n  msg += `${rz.latitude.toFixed(2)}° N, ${rz.longitude.toFixed(2)}° E\\n`;\n  msg += `~${rz.distance_km.toFixed(0)} km away | ${rz.suitability.toUpperCase()}\\n`;\n  msg += `Reason: ${rz.reason}\\n`;\n}\n\n// Factors\nif (data.suitability_factors && data.suitability_factors.length > 0) {\n  msg += `\\n📊 *Analysis:*\\n`;\n  for (const f of data.suitability_factors) {\n    msg += `• ${f}\\n`;\n  }\n}\n\nmsg += `\\n_${data.disclaimer || 'Environmental suitability assessment — not a fish prediction.'}_`;\nif (data.data_freshness_hours) {\n  msg += `\\n\\n🕐 Data: ${data.data_source || 'Ocean Sentry'} (${Math.round(data.data_freshness_hours)}h ago)`;\n} else {\n  msg += `\\n\\n🕐 Data: ${data.data_source || 'Ocean Sentry'}`;\n}\n\nreturn [{ json: { chat_id: loc.chat_id, text: msg } }];"
+      },
+      "id": "format-intelligence-loc",
+      "name": "Format Intelligence (Location)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-intelligence-loc",
+      "name": "Send Response (Location)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1740, 200],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Voice message: download file via Telegram API and send to STT\nconst input = $input.first().json;\nconst voice = input.voice;\nconst chat_id = input.chat_id;\nconst first_name = input.first_name;\n\nif (!voice || !voice.file_id) {\n  return [{ json: { chat_id, error: true, text: '⚠️ Could not process voice message. Please try again or send text.' } }];\n}\n\nreturn [{ json: { chat_id, first_name, file_id: voice.file_id, duration: voice.duration || 0 } }];"
+      },
+      "id": "extract-voice",
+      "name": "Extract Voice Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getFile",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "file_id", "value": "={{ $json.file_id }}" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "get-voice-file-path",
+      "name": "Get Voice File Path",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $json.result.file_path }}",
+        "options": {
+          "response": { "response": { "responseFormat": "file" } },
+          "timeout": 15000
+        }
+      },
+      "id": "download-voice-file",
+      "name": "Download Voice File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert downloaded voice binary to base64 for Gemini API\nconst voiceInfo = $('Extract Voice Info').first().json;\nconst binaryData = $input.first().binary;\n\nif (!binaryData || !binaryData.data) {\n  return [{ json: { chat_id: voiceInfo.chat_id, first_name: voiceInfo.first_name, transcription_failed: true, text: '' } }];\n}\n\nconst base64Audio = binaryData.data.data || Buffer.from(binaryData.data).toString('base64');\nconst mimeType = binaryData.data.mimeType || 'audio/ogg';\n\nreturn [{ json: { chat_id: voiceInfo.chat_id, first_name: voiceInfo.first_name, base64Audio, mimeType } }];"
+      },
+      "id": "prepare-audio-base64",
+      "name": "Prepare Audio Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [\n      {\n        \"inlineData\": {\n          \"mimeType\": \"{{ $json.mimeType }}\",\n          \"data\": \"{{ $json.base64Audio }}\"\n        }\n      },\n      {\n        \"text\": \"Transcribe this audio accurately. Preserve the language spoken by the fisherman. Return only the transcription text. Do not answer or interpret the question.\"\n      }\n    ]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.1,\n    \"maxOutputTokens\": 256\n  }\n}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "speech-to-text",
+      "name": "Gemini Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst voiceInfo = $('Prepare Audio Base64').first().json;\n\n// Extract transcription from Gemini response\nlet text = '';\ntry {\n  if (input.candidates && input.candidates[0] && input.candidates[0].content && input.candidates[0].content.parts) {\n    text = input.candidates[0].content.parts.map(p => p.text || '').join('').trim();\n  }\n} catch (e) {\n  text = '';\n}\n\nif (!text || text.length === 0) {\n  return [{ json: {\n    chat_id: voiceInfo.chat_id,\n    first_name: voiceInfo.first_name,\n    text: '',\n    transcription_failed: true\n  }}];\n}\n\nreturn [{ json: {\n  chat_id: voiceInfo.chat_id,\n  first_name: voiceInfo.first_name,\n  text: text,\n  transcription_failed: false,\n  msg_type: 'text'\n}}];"
+      },
+      "id": "process-transcription",
+      "name": "Process Transcription",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "transcription-ok",
+              "leftValue": "={{ $json.transcription_failed }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "check-transcription",
+      "name": "Transcription OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1960, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Sorry, I couldn't understand the voice message. Please try again or send your request as text.\n\nSupported queries:\n🎣 \"Is it good to fish here?\"\n🌊 \"How is the sea?\"\n📍 \"Where should I fish?\"",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-stt-failure",
+      "name": "Send STT Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2180, 350],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deterministic intent router\nconst input = $input.first().json;\nconst text = (input.text || '').toLowerCase().trim();\nconst chat_id = input.chat_id;\nconst first_name = input.first_name || 'Fisher';\n\nlet intent = 'unknown';\n\n// Pattern groups — order matters (most specific first)\nconst zonePatterns = ['where should i fish', 'best fishing', 'find fishing', 'fishing zone', 'recommend', 'zone', 'best spot', 'good area'];\nconst fishingPatterns = ['fish', 'suitable', 'suitability', 'good to fish', 'can i fish', 'fishing here', 'machhli', 'meen', 'matsya'];\nconst seaPatterns = ['sea', 'ocean', 'conditions', 'how is the sea', 'samudra', 'kadal', 'weather', 'waves', 'current'];\nconst alertPatterns = ['alert', 'warning', 'safe', 'danger', 'is it safe', 'khabar', 'risk'];\nconst subscribePatterns = ['subscribe', 'notify me', 'alerts on', 'alert me', 'send alert', 'watch'];\nconst unsubscribePatterns = ['unsubscribe', 'stop alert', 'alerts off', 'no more', 'cancel alert'];\nconst helpPatterns = ['/start', '/help', 'help', 'menu', 'start', 'hi', 'hello', 'hey'];\n\nif (text === '/start' || text === '/help' || helpPatterns.some(p => text === p || text.startsWith(p + ' '))) {\n  intent = 'help';\n} else if (text === '/unsubscribe' || unsubscribePatterns.some(p => text.includes(p))) {\n  intent = 'unsubscribe';\n} else if (text === '/subscribe' || subscribePatterns.some(p => text.includes(p))) {\n  intent = 'subscribe';\n} else if (text === '/zone' || zonePatterns.some(p => text.includes(p))) {\n  intent = 'zone_recommendation';\n} else if (text === '/fish' || fishingPatterns.some(p => text.includes(p))) {\n  intent = 'fishing_intelligence';\n} else if (text === '/sea' || seaPatterns.some(p => text.includes(p))) {\n  intent = 'sea_conditions';\n} else if (text === '/alerts' || alertPatterns.some(p => text.includes(p))) {\n  intent = 'coastal_alerts';\n}\n\nreturn [{ json: { intent, chat_id, first_name, text: input.text } }];"
+      },
+      "id": "parse-intent",
+      "name": "Parse Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 600]
+    },
+    {
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "conditions": {
+          "string": [
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "help",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "fishing_intelligence",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "sea_conditions",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "zone_recommendation",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "subscribe",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "unsubscribe",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "coastal_alerts",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "route-intent",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1080, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "🎣 *OCEAN SENTRY — FISHERMAN ASSISTANT*\n\nHello {{ $json.first_name }}! I can help you with ocean intelligence.\n\n*Commands:*\n📍 Share Location — Get fishing intelligence\n🎣 /fish — Fishing suitability\n🌊 /sea — Sea conditions\n📌 /zone — Recommended fishing zone\n🚨 /alerts — Coastal alerts\n🔔 /subscribe — Subscribe to alerts\n🔕 /unsubscribe — Stop alerts\n🎙 Voice message — Ask anything\n\n*How it works:*\n1️⃣ Share your GPS location\n2️⃣ Ask questions about fishing or sea\n3️⃣ I'll use real ocean data to advise\n\n_Data: Copernicus Marine + Argo observations_\n_ML: Isolation Forest anomaly detection_",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-help",
+      "name": "Send Help",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 460],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/location/{{ $json.chat_id }}",
+        "options": {
+          "timeout": 5000,
+          "batching": { "batch": { "batchSize": 1 } }
+        }
+      },
+      "id": "get-stored-location-fish",
+      "name": "Get Stored Location (Fish)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 560],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst intentData = $('Parse Intent').first().json;\nconst chat_id = intentData.chat_id;\n\n// Check if we got a location or an error\nif (input.latitude && input.longitude) {\n  return [{ json: { chat_id, lat: input.latitude, lon: input.longitude, has_location: true, intent: intentData.intent } }];\n}\n\n// No stored location\nreturn [{ json: { chat_id, has_location: false, intent: intentData.intent } }];"
+      },
+      "id": "check-has-location",
+      "name": "Check Has Location",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 560]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has-loc",
+              "leftValue": "={{ $json.has_location }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "if-has-location",
+      "name": "Has Location?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 560]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "📍 I don't have your location yet.\n\nPlease share your Telegram location first:\nTap 📎 → Location → Send current location\n\nThen ask me again!",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-no-location",
+      "name": "Send No Location",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2000, 650],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "conditions": {
+          "string": [
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "fishing_intelligence",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "sea_conditions",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "zone_recommendation",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.intent }}",
+                  "rightValue": "coastal_alerts",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "route-api-call",
+      "name": "Route API Call",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2000, 480]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/intelligence",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "latitude", "value": "={{ $json.lat }}" },
+            { "name": "longitude", "value": "={{ $json.lon }}" },
+            { "name": "radius_km", "value": "50" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-intelligence-text",
+      "name": "Fetch Intelligence (Text)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 380]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/sea-conditions",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "latitude", "value": "={{ $('Check Has Location').item.json.lat }}" },
+            { "name": "longitude", "value": "={{ $('Check Has Location').item.json.lon }}" },
+            { "name": "radius_km", "value": "50" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-sea-conditions",
+      "name": "Fetch Sea Conditions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 480]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/zone-recommendation",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "latitude", "value": "={{ $('Check Has Location').item.json.lat }}" },
+            { "name": "longitude", "value": "={{ $('Check Has Location').item.json.lon }}" },
+            { "name": "radius_km", "value": "100" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-zone-recommendation",
+      "name": "Fetch Zone Recommendation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 580]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/coastal-alerts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "latitude", "value": "={{ $('Check Has Location').item.json.lat }}" },
+            { "name": "longitude", "value": "={{ $('Check Has Location').item.json.lon }}" },
+            { "name": "radius_km", "value": "50" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "fetch-coastal-alerts",
+      "name": "Fetch Coastal Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 680]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst loc = $('Check Has Location').first().json;\n\nlet msg = `🎣 *OCEAN SENTRY — FISHING INTELLIGENCE*\\n\\n`;\nmsg += `📍 ${loc.lat.toFixed(4)}° N, ${loc.lon.toFixed(4)}° E\\n\\n`;\n\nconst suitEmoji = data.suitability === 'high' ? '🟢' : data.suitability === 'moderate' ? '🟡' : data.suitability === 'low' ? '🔴' : '⚪';\nmsg += `🎯 *Suitability:* ${suitEmoji} ${data.suitability.toUpperCase()} (${(data.suitability_score * 100).toFixed(0)}%)\\n\\n`;\n\nif (data.sst && data.sst.availability === 'available') msg += `🌡 *SST:* ${data.sst.value}°C\\n`;\nif (data.current_speed && data.current_speed.availability === 'available') msg += `🌊 *Current:* ${data.current_speed.value} m/s\\n`;\nif (data.salinity && data.salinity.availability === 'available') msg += `🧂 *Salinity:* ${data.salinity.value} PSU\\n`;\nmsg += `\\n🌊 *Sea Condition:* ${(data.sea_condition || 'unknown').toUpperCase()}\\n`;\nif (data.anomaly_count > 0) msg += `⚠️ *Anomalies:* ${data.anomaly_count} detected\\n`;\n\nif (data.suitability_factors && data.suitability_factors.length > 0) {\n  msg += `\\n📊 *Factors:*\\n`;\n  for (const f of data.suitability_factors) msg += `• ${f}\\n`;\n}\n\nmsg += `\\n📡 ${data.data_source || 'Ocean Sentry'}`;\nif (data.data_freshness_hours) msg += ` (${Math.round(data.data_freshness_hours)}h ago)`;\nmsg += `\\n\\n_${data.disclaimer || 'Environmental suitability assessment only.'}_`;\n\nreturn [{ json: { chat_id: loc.chat_id, text: msg } }];"
+      },
+      "id": "format-intelligence-text",
+      "name": "Format Intelligence (Text)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst loc = $('Check Has Location').first().json;\n\nlet msg = `🌊 *OCEAN SENTRY — SEA CONDITIONS*\\n\\n`;\nmsg += `📍 ${loc.lat.toFixed(4)}° N, ${loc.lon.toFixed(4)}° E\\n\\n`;\n\nif (data.sst && data.sst.availability === 'available') msg += `🌡 *SST:* ${data.sst.value}°C\\n`;\nelse msg += `🌡 *SST:* unavailable\\n`;\n\nif (data.salinity && data.salinity.availability === 'available') msg += `🧂 *Salinity:* ${data.salinity.value} PSU\\n`;\nif (data.current_speed && data.current_speed.availability === 'available') msg += `💨 *Current Speed:* ${data.current_speed.value} m/s\\n`;\nif (data.current_direction && data.current_direction.availability === 'available') msg += `🧭 *Direction:* ${data.current_direction.value}°\\n`;\nif (data.wave_height && data.wave_height.availability === 'unavailable') msg += `🌊 *Wave Height:* unavailable\\n`;\n\nmsg += `\\n🌊 *Overall:* ${(data.overall_condition || 'unknown').toUpperCase()}\\n`;\nif (data.anomaly_count > 0) msg += `⚠️ *Anomalies:* ${data.anomaly_count} detected\\n`;\nif (data.warnings && data.warnings.length > 0) {\n  msg += `\\n*Warnings:*\\n`;\n  for (const w of data.warnings.slice(0, 3)) msg += `• ${w}\\n`;\n}\n\nmsg += `\\n📡 ${data.data_source || 'Ocean Sentry'}`;\nif (data.data_freshness_hours) msg += ` (${Math.round(data.data_freshness_hours)}h ago)`;\n\nreturn [{ json: { chat_id: loc.chat_id, text: msg } }];"
+      },
+      "id": "format-sea-conditions",
+      "name": "Format Sea Conditions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst loc = $('Check Has Location').first().json;\n\nlet msg = '';\nif (data.found) {\n  const rz = data.recommendation;\n  const suitEmoji = rz.suitability === 'high' ? '🟢' : rz.suitability === 'moderate' ? '🟡' : '🔴';\n  msg = `📌 *OCEAN SENTRY — RECOMMENDED ZONE*\\n\\n`;\n  msg += `📍 *Recommended:* ${rz.latitude.toFixed(4)}° N, ${rz.longitude.toFixed(4)}° E\\n`;\n  msg += `📏 *Distance:* ~${rz.distance_km.toFixed(0)} km from your location\\n`;\n  msg += `🎯 *Suitability:* ${suitEmoji} ${rz.suitability.toUpperCase()} (${(rz.suitability_score * 100).toFixed(0)}%)\\n`;\n  msg += `💡 *Reason:* ${rz.reason}\\n`;\n  msg += `\\n📍 *Your location:* ${data.current_location_suitability.toUpperCase()}\\n`;\n  msg += `\\n📡 ${data.data_source || 'Ocean Sentry'}`;\n  msg += `\\n\\n_${data.disclaimer || 'Environmental suitability assessment only.'}_`;\n} else {\n  msg = `📌 *OCEAN SENTRY — ZONE RECOMMENDATION*\\n\\n`;\n  msg += `❌ No suitable fishing zone found within the search radius.\\n\\n`;\n  msg += `This may be due to insufficient ocean data coverage in this area.\\n`;\n  msg += `Try again with a larger search area or at a different location.`;\n}\n\nreturn [{ json: { chat_id: loc.chat_id, text: msg } }];"
+      },
+      "id": "format-zone-recommendation",
+      "name": "Format Zone Recommendation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst loc = $('Check Has Location').first().json;\n\nlet msg = `🚨 *OCEAN SENTRY — COASTAL ALERTS*\\n\\n`;\nmsg += `📍 ${loc.lat.toFixed(4)}° N, ${loc.lon.toFixed(4)}° E\\n\\n`;\n\nif (data.alerts && data.alerts.length > 0) {\n  for (const a of data.alerts) {\n    msg += `⚠️ *${a.alert_type.toUpperCase()}* (${a.severity})\\n`;\n    msg += `${a.message}\\n`;\n    msg += `Source: ${a.source} | Verified: ${a.verified ? 'Yes' : 'No'}\\n\\n`;\n  }\n}\n\nmsg += `ℹ️ ${data.message}\\n`;\nmsg += `\\n📡 ${data.data_source || 'Ocean Sentry'}`;\n\nreturn [{ json: { chat_id: loc.chat_id, text: msg } }];"
+      },
+      "id": "format-coastal-alerts",
+      "name": "Format Coastal Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 680]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-text-response",
+      "name": "Send Text Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2660, 530],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Subscribe: need location first\nconst input = $input.first().json;\nconst chat_id = input.chat_id;\n\nreturn [{ json: { chat_id } }];"
+      },
+      "id": "handle-subscribe",
+      "name": "Handle Subscribe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 760]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/location/{{ $json.chat_id }}",
+        "options": { "timeout": 5000 },
+        "onError": "continueRegularOutput"
+      },
+      "id": "get-loc-for-subscribe",
+      "name": "Get Location for Subscribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 760]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst chat_id = $('Handle Subscribe').first().json.chat_id;\n\nif (input.latitude && input.longitude) {\n  return [{ json: { chat_id, lat: input.latitude, lon: input.longitude, has_location: true } }];\n}\nreturn [{ json: { chat_id, has_location: false } }];"
+      },
+      "id": "check-loc-subscribe",
+      "name": "Check Location Subscribe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 760]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has-loc-sub",
+              "leftValue": "={{ $json.has_location }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "if-has-loc-sub",
+      "name": "Has Location (Sub)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 760]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/subscriptions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.chat_id }}\",\n  \"latitude\": {{ $json.lat }},\n  \"longitude\": {{ $json.lon }},\n  \"radius_km\": 50,\n  \"alert_types\": [\"anomaly\", \"conditions\"]\n}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "create-subscription",
+      "name": "Create Subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 740]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Handle Subscribe').first().json.chat_id }}",
+        "text": "🔔 *Subscribed to Ocean Sentry Alerts!*\n\nYou will receive notifications when:\n⚠️ Ocean anomalies are detected\n🌊 Sea conditions change significantly\n🟢 Favorable fishing conditions appear\n\nAlerts checked every 6 hours.\n\nReply /unsubscribe to stop.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-subscribed",
+      "name": "Send Subscribed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2440, 740],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "📍 Please share your location first before subscribing to alerts.\n\nTap 📎 → Location → Send current location\nThen send /subscribe again.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-need-loc-sub",
+      "name": "Need Location (Sub)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2220, 850],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst chat_id = input.chat_id;\n\nreturn [{ json: { chat_id } }];"
+      },
+      "id": "handle-unsubscribe",
+      "name": "Handle Unsubscribe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 920]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.OCEAN_SENTRY_API_URL }}/api/fisherman/subscriptions/{{ $json.chat_id }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "delete-subscription",
+      "name": "Delete Subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 920]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Handle Unsubscribe').first().json.chat_id }}",
+        "text": "🔕 *Unsubscribed.*\n\nYou will no longer receive Ocean Sentry alerts.\n\nSend /subscribe to re-enable.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-unsubscribed",
+      "name": "Send Unsubscribed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 920],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "🤔 I'm not sure what you mean.\n\nTry one of these:\n🎣 /fish — Fishing suitability\n🌊 /sea — Sea conditions\n📌 /zone — Recommended zone\n📍 Share location — For all intelligence\n🎙 Voice message — Ask anything\n\nOr type /help for full menu.",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-unknown",
+      "name": "Send Unknown Intent",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 1060],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-cred", "name": "Ocean Sentry Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Classify Input", "type": "main", "index": 0 }]]
+    },
+    "Classify Input": {
+      "main": [[{ "node": "Route by Message Type", "type": "main", "index": 0 }]]
+    },
+    "Route by Message Type": {
+      "main": [
+        [{ "node": "Extract Location", "type": "main", "index": 0 }],
+        [{ "node": "Extract Voice Info", "type": "main", "index": 0 }],
+        [{ "node": "Parse Intent", "type": "main", "index": 0 }],
+        [{ "node": "Parse Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Location": {
+      "main": [[{ "node": "Store Location", "type": "main", "index": 0 }]]
+    },
+    "Store Location": {
+      "main": [[{ "node": "Fetch Intelligence (Location)", "type": "main", "index": 0 }]]
+    },
+    "Fetch Intelligence (Location)": {
+      "main": [[{ "node": "Format Intelligence (Location)", "type": "main", "index": 0 }]]
+    },
+    "Format Intelligence (Location)": {
+      "main": [[{ "node": "Send Response (Location)", "type": "main", "index": 0 }]]
+    },
+    "Extract Voice Info": {
+      "main": [[{ "node": "Get Voice File Path", "type": "main", "index": 0 }]]
+    },
+    "Get Voice File Path": {
+      "main": [[{ "node": "Download Voice File", "type": "main", "index": 0 }]]
+    },
+    "Download Voice File": {
+      "main": [[{ "node": "Prepare Audio Base64", "type": "main", "index": 0 }]]
+    },
+    "Prepare Audio Base64": {
+      "main": [[{ "node": "Gemini Transcribe", "type": "main", "index": 0 }]]
+    },
+    "Gemini Transcribe": {
+      "main": [[{ "node": "Process Transcription", "type": "main", "index": 0 }]]
+    },
+    "Process Transcription": {
+      "main": [[{ "node": "Transcription OK?", "type": "main", "index": 0 }]]
+    },
+    "Transcription OK?": {
+      "main": [
+        [{ "node": "Send STT Failure", "type": "main", "index": 0 }],
+        [{ "node": "Parse Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Intent": {
+      "main": [[{ "node": "Route by Intent", "type": "main", "index": 0 }]]
+    },
+    "Route by Intent": {
+      "main": [
+        [{ "node": "Send Help", "type": "main", "index": 0 }],
+        [{ "node": "Get Stored Location (Fish)", "type": "main", "index": 0 }],
+        [{ "node": "Get Stored Location (Fish)", "type": "main", "index": 0 }],
+        [{ "node": "Get Stored Location (Fish)", "type": "main", "index": 0 }],
+        [{ "node": "Handle Subscribe", "type": "main", "index": 0 }],
+        [{ "node": "Handle Unsubscribe", "type": "main", "index": 0 }],
+        [{ "node": "Get Stored Location (Fish)", "type": "main", "index": 0 }],
+        [{ "node": "Send Unknown Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Stored Location (Fish)": {
+      "main": [[{ "node": "Check Has Location", "type": "main", "index": 0 }]]
+    },
+    "Check Has Location": {
+      "main": [[{ "node": "Has Location?", "type": "main", "index": 0 }]]
+    },
+    "Has Location?": {
+      "main": [
+        [{ "node": "Route API Call", "type": "main", "index": 0 }],
+        [{ "node": "Send No Location", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route API Call": {
+      "main": [
+        [{ "node": "Fetch Intelligence (Text)", "type": "main", "index": 0 }],
+        [{ "node": "Fetch Sea Conditions", "type": "main", "index": 0 }],
+        [{ "node": "Fetch Zone Recommendation", "type": "main", "index": 0 }],
+        [{ "node": "Fetch Coastal Alerts", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Intelligence (Text)": {
+      "main": [[{ "node": "Format Intelligence (Text)", "type": "main", "index": 0 }]]
+    },
+    "Fetch Sea Conditions": {
+      "main": [[{ "node": "Format Sea Conditions", "type": "main", "index": 0 }]]
+    },
+    "Fetch Zone Recommendation": {
+      "main": [[{ "node": "Format Zone Recommendation", "type": "main", "index": 0 }]]
+    },
+    "Fetch Coastal Alerts": {
+      "main": [[{ "node": "Format Coastal Alerts", "type": "main", "index": 0 }]]
+    },
+    "Format Intelligence (Text)": {
+      "main": [[{ "node": "Send Text Response", "type": "main", "index": 0 }]]
+    },
+    "Format Sea Conditions": {
+      "main": [[{ "node": "Send Text Response", "type": "main", "index": 0 }]]
+    },
+    "Format Zone Recommendation": {
+      "main": [[{ "node": "Send Text Response", "type": "main", "index": 0 }]]
+    },
+    "Format Coastal Alerts": {
+      "main": [[{ "node": "Send Text Response", "type": "main", "index": 0 }]]
+    },
+    "Handle Subscribe": {
+      "main": [[{ "node": "Get Location for Subscribe", "type": "main", "index": 0 }]]
+    },
+    "Get Location for Subscribe": {
+      "main": [[{ "node": "Check Location Subscribe", "type": "main", "index": 0 }]]
+    },
+    "Check Location Subscribe": {
+      "main": [[{ "node": "Has Location (Sub)?", "type": "main", "index": 0 }]]
+    },
+    "Has Location (Sub)?": {
+      "main": [
+        [{ "node": "Create Subscription", "type": "main", "index": 0 }],
+        [{ "node": "Need Location (Sub)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Subscription": {
+      "main": [[{ "node": "Send Subscribed", "type": "main", "index": 0 }]]
+    },
+    "Handle Unsubscribe": {
+      "main": [[{ "node": "Delete Subscription", "type": "main", "index": 0 }]]
+    },
+    "Delete Subscription": {
+      "main": [[{ "node": "Send Unsubscribed", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

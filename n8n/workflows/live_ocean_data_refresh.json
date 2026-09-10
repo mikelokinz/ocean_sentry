@@ -1,0 +1,350 @@
+{
+  "id": "r7kW3mPx9vLn2qYa",
+  "meta": {
+    "instanceId": "ocean-sentry-live-refresh"
+  },
+  "name": "Ocean Sentry — Live Ocean Data Refresh",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "nodes": [
+    {
+      "id": "schedule-trigger-001",
+      "name": "Schedule — Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual-trigger-002",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 500],
+      "parameters": {}
+    },
+    {
+      "id": "health-check-003",
+      "name": "Backend Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400],
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/health",
+        "method": "GET",
+        "options": {}
+      }
+    },
+    {
+      "id": "if-backend-004",
+      "name": "Backend Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-backend",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "trigger-refresh-005",
+      "name": "Trigger Data Refresh",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 300],
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/ocean/refresh",
+        "method": "POST",
+        "options": {
+          "timeout": 300000
+        }
+      }
+    },
+    {
+      "id": "if-refresh-006",
+      "name": "Refresh Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1240, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-refresh",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "get-data-status-007",
+      "name": "Get Data Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 200],
+      "parameters": {
+        "url": "http://127.0.0.1:8000/api/ocean/data-status",
+        "method": "GET",
+        "options": {}
+      }
+    },
+    {
+      "id": "refresh-report-008",
+      "name": "Refresh Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 200],
+      "parameters": {
+        "jsCode": "const refreshData = $('Trigger Data Refresh').item.json;\nconst dataStatus = $('Get Data Status').item.json;\n\nreturn [{\n  json: {\n    refresh_status: 'completed',\n    copernicus_latest: refreshData.copernicus_latest || null,\n    argo_latest: refreshData.argo_latest || null,\n    records_refreshed: refreshData.records_refreshed || 0,\n    data_status: dataStatus,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "error-backend-009",
+      "name": "Error — Backend Unavailable",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [980, 540],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-error-type",
+              "name": "error_type",
+              "value": "backend_unavailable",
+              "type": "string"
+            },
+            {
+              "id": "assign-error-message",
+              "name": "message",
+              "value": "FastAPI backend at http://127.0.0.1:8000 is not responding. Ensure the Ocean Sentry backend is running.",
+              "type": "string"
+            },
+            {
+              "id": "assign-error-ts",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "error-refresh-010",
+      "name": "Error — Refresh Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1500, 440],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-fail-type",
+              "name": "error_type",
+              "value": "refresh_failed",
+              "type": "string"
+            },
+            {
+              "id": "assign-fail-message",
+              "name": "message",
+              "value": "={{ 'Data refresh failed: ' + $json.error || $json.message || 'Unknown error' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-fail-status",
+              "name": "response_status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-fail-ts",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule — Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Backend Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Backend Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend Health Check": {
+      "main": [
+        [
+          {
+            "node": "Backend Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend Available?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Data Refresh",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error — Backend Unavailable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Data Refresh": {
+      "main": [
+        [
+          {
+            "node": "Refresh Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh Successful?": {
+      "main": [
+        [
+          {
+            "node": "Get Data Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error — Refresh Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Data Status": {
+      "main": [
+        [
+          {
+            "node": "Refresh Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "staticData": null,
+  "triggerCount": 0,
+  "createdAt": "2026-08-28T00:00:00.000Z",
+  "updatedAt": "2026-08-28T00:00:00.000Z",
+  "versionId": "1",
+  "notes": [
+    {
+      "id": "sticky-note-001",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [140, 80],
+      "parameters": {
+        "width": 400,
+        "height": 160,
+        "content": "## Live Ocean Data Refresh\n\nThis workflow refreshes the latest Copernicus Marine (SST, chlorophyll, currents) and Argo float profile data every 6 hours. It calls the FastAPI backend's `/api/ocean/refresh` endpoint which fetches new data, processes it, and updates the local Parquet store."
+      }
+    },
+    {
+      "id": "sticky-note-002",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 640],
+      "parameters": {
+        "width": 380,
+        "height": 120,
+        "content": "## Error Handling\n\nError paths capture backend unavailability and refresh failures with timestamps for debugging. Connect these to notification nodes (Telegram/email) as needed."
+      }
+    },
+    {
+      "id": "sticky-note-003",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1440, 60],
+      "parameters": {
+        "width": 420,
+        "height": 120,
+        "content": "## Architecture\n\nn8n → POST /api/ocean/refresh → FastAPI → copernicusmarine.open_dataset() + ArgoVis → Process → Update Parquet → Reload"
+      }
+    }
+  ]
+}
