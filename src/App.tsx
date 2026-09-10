@@ -6,7 +6,10 @@ const Explorer = lazy(() => import('./pages/Explorer'));
 const GestureLab = lazy(() => import('./pages/GestureLab'));
 
 function App() {
-  const [introDone, setIntroDone] = useState(false);
+  const urlParams = new URLSearchParams(window.location.search);
+  const shouldSkipIntro = urlParams.get('skip_intro') === 'true' || localStorage.getItem('ocean_sentry_skip_intro') === 'true';
+
+  const [introDone, setIntroDone] = useState(shouldSkipIntro);
   const [explorerMounted, setExplorerMounted] = useState(true);
 
   // Simple path routing for the gesture lab
@@ -22,6 +25,7 @@ function App() {
 
   // Mount Explorer as soon as intro starts transitioning out
   const handleIntroComplete = () => {
+    localStorage.setItem('ocean_sentry_skip_intro', 'true');
     setExplorerMounted(true);
     setIntroDone(true);
   };
