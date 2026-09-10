@@ -16,24 +16,23 @@ function SingleOilSpillMarker({
   spill,
   isSelected,
   onSelect,
+  onHover,
 }: {
   spill: OilSpillRecord;
   isSelected: boolean;
   onSelect: (spill: OilSpillRecord) => void;
+  onHover: (spill: OilSpillRecord | null) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const ringRef = useRef<THREE.Mesh>(null!);
-  const [isHovered, setIsHovered] = useState(false);
   const { gl } = useThree();
 
-  // Position precisely on Earth surface
   const radius = 2.032;
   const position = useMemo(
     () => new THREE.Vector3(...(latLonToXYZ(spill.latitude, spill.longitude, radius) as [number, number, number])),
     [spill.latitude, spill.longitude, radius]
   );
 
-  // Normal orientation outward from Earth surface
   const normal = useMemo(() => position.clone().normalize(), [position]);
   const orientation = useMemo(() => {
     const q = new THREE.Quaternion();
@@ -42,46 +41,42 @@ function SingleOilSpillMarker({
   }, [normal]);
 
   const color = spill.status === 'oil_detected' ? '#ef4444' : '#f59e0b';
-  const size = isSelected ? 0.034 : isHovered ? 0.028 : 0.024;
+  const size = isSelected ? 0.032 : 0.024;
 
   useFrame((state) => {
     const time = state.clock.elapsedTime;
 
-    // Pulsing shockwave ring
     if (ringRef.current) {
-      const scale = 1 + Math.abs(Math.sin(time * 2.2)) * 1.6;
+      const scale = 1 + Math.abs(Math.sin(time * 2.2)) * 1.5;
       ringRef.current.scale.setScalar(scale);
       const ringMat = ringRef.current.material as THREE.MeshBasicMaterial;
       ringMat.opacity = Math.max(0, 0.75 - (scale - 1) * 0.45);
     }
 
-    // Glowing pulsation on the anomaly sphere
     if (meshRef.current) {
       const mat = meshRef.current.material as THREE.MeshStandardMaterial;
       const pulse = 0.7 + Math.sin(time * 3.5) * 0.3;
-      mat.emissiveIntensity = isSelected ? pulse * 1.5 : isHovered ? 1.1 : pulse;
+      mat.emissiveIntensity = isSelected ? pulse * 1.5 : pulse;
     }
   });
 
   return (
     <group position={position} quaternion={orientation}>
-      {/* Outer pulsing ring tangent to globe surface */}
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[size * 1.5, size * 2.2, 32]} />
+        <ringGeometry args={[size * 1.5, size * 2.1, 32]} />
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={0.65}
+          opacity={0.6}
           side={THREE.DoubleSide}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
       </mesh>
 
-      {/* Selected cyan focus halo */}
       {isSelected && (
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[size * 2.4, size * 2.8, 36]} />
+          <ringGeometry args={[size * 2.2, size * 2.6, 36]} />
           <meshBasicMaterial
             color="#38bdf8"
             transparent
@@ -102,12 +97,12 @@ function SingleOilSpillMarker({
         }}
         onPointerEnter={(e) => {
           e.stopPropagation();
-          setIsHovered(true);
+          onHover(spill);
           gl.domElement.style.cursor = 'pointer';
         }}
         onPointerLeave={(e) => {
           e.stopPropagation();
-          setIsHovered(false);
+          onHover(null);
           gl.domElement.style.cursor = 'default';
         }}
       >
@@ -120,33 +115,6 @@ function SingleOilSpillMarker({
           metalness={0.25}
         />
       </mesh>
-
-      {/* Ultra-compact tooltip visible ONLY on hover */}
-      {isHovered && !isSelected && (
-        <Html distanceFactor={10} center style={{ pointerEvents: 'none', transform: 'translateY(-28px)' }}>
-          <div
-            style={{
-              background: 'rgba(2, 6, 23, 0.94)',
-              border: `1px solid ${color}90`,
-              borderRadius: '6px',
-              padding: '4px 8px',
-              color: '#f8fafc',
-              fontSize: '10px',
-              fontFamily: 'monospace',
-              whiteSpace: 'nowrap',
-              boxShadow: `0 4px 14px rgba(0,0,0,0.6), 0 0 10px ${color}40`,
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
-            <span style={{ fontWeight: 600 }}>{spill.name}</span>
-            <span style={{ color: '#94a3b8' }}>· Click to inspect</span>
-          </div>
-        </Html>
-      )}
     </group>
   );
 }
@@ -157,14 +125,14 @@ export function OilSpillMarkers({
   onSelect,
   visible = true,
 }: OilSpillMarkersProps) {
+  const [hoveredSpill, setHoveredSpill] = useState<OilSpillRecord | null>(null);
+
   if (!visible || !spills || spills.length === 0) return null;
 
-  // Strictly filter incidents to only cover the Bay of Bengal (lat ~10 to 22, lon ~80 to 94)
-  const bayOfBengalSpills = useMemo(() => {
-    return spills.filter(
-      (s) => s.longitude >= 79.5 && s.longitude <= 95.0 && s.latitude >= 8.0 && s.latitude <= 23.0
-    );
-  }, [spills]);
+  // Strictly filter incidents to only cover the Bay of Bengal
+  const bayOfBengalSpills = spills.filter(
+    (s) => s.longitude >= 79.5 && s.longitude <= 95.0 && s.latitude >= 8.0 && s.latitude <= 23.0
+  );
 
   return (
     <group name="oil-spill-hazard-layer">
@@ -174,8 +142,48 @@ export function OilSpillMarkers({
           spill={spill}
           isSelected={selectedId === spill.id}
           onSelect={onSelect}
+          onHover={setHoveredSpill}
         />
       ))}
+
+      {/* Sleek, tiny screen-space hover tooltip (NO distanceFactor, rendered at 11px font) */}
+      {hoveredSpill && (
+        <group
+          position={
+            new THREE.Vector3(
+              ...(latLonToXYZ(hoveredSpill.latitude, hoveredSpill.longitude, 2.07) as [number, number, number])
+            )
+          }
+        >
+          <Html style={{ pointerEvents: 'none' }} occlude={false} center>
+            <div
+              style={{
+                background: 'rgba(2, 6, 23, 0.94)',
+                border: '1px solid rgba(239, 68, 68, 0.7)',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                color: '#f8fafc',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.7)',
+                backdropFilter: 'blur(8px)',
+                transform: 'translateY(-18px)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                pointerEvents: 'none',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
+              <span style={{ fontWeight: 600, color: '#f8fafc' }}>{hoveredSpill.name}</span>
+              <span style={{ color: '#ef4444', fontWeight: 700 }}>
+                ({(hoveredSpill.confidence * 100).toFixed(0)}%)
+              </span>
+            </div>
+          </Html>
+        </group>
+      )}
     </group>
   );
 }
