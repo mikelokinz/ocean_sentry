@@ -47,12 +47,12 @@ interface ExplorerProps {
   initialStage?: CameraStage;
 }
 
-export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
+export default function Explorer({ initialStage = 'exploration' }: ExplorerProps) {
   // Camera / scene stage state
   const [stage, setStage] = useState<CameraStage>(initialStage);
-  const [showControls, setShowControls] = useState(false);
-  const [showParticles, setShowParticles] = useState(false);
-  const [markersVisible, setMarkersVisible] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [showParticles, setShowParticles] = useState(true);
+  const [markersVisible, setMarkersVisible] = useState(true);
 
   // Ocean intelligence state
   const [layer, setLayer] = useState<OceanLayer>('observation');
@@ -152,6 +152,17 @@ export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
 
   // Cinematic sequence timing
   useEffect(() => {
+    if (initialStage !== 'space') {
+      setStage('exploration');
+      setShowControls(true);
+      setShowParticles(true);
+      setMarkersVisible(true);
+      if (orbitRef.current) {
+        orbitRef.current.enabled = true;
+      }
+      return;
+    }
+
     const stages: CameraStage[] = ['space', 'earth', 'indianOcean', 'bayOfBengal', 'exploration'];
     const delays = [1200, 3600, 6800, 10500];
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -177,7 +188,7 @@ export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
     });
 
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [initialStage]);
 
   // Timeline auto playback
   useEffect(() => {
@@ -303,7 +314,7 @@ export default function Explorer({ initialStage = 'space' }: ExplorerProps) {
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#000208', overflow: 'hidden' }}>
       {/* THREE.JS WEBGL CANVAS */}
       <Canvas
-        camera={{ position: [1.2, 2.0, -15.0], fov: 42, near: 0.1, far: 300 }}
+        camera={{ position: [0.35, 1.05, -4.5], fov: 42, near: 0.1, far: 300 }}
         gl={{
           antialias: true,
           alpha: false,

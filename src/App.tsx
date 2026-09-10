@@ -7,7 +7,7 @@ const GestureLab = lazy(() => import('./pages/GestureLab'));
 
 function App() {
   const [introDone, setIntroDone] = useState(false);
-  const [explorerMounted, setExplorerMounted] = useState(false);
+  const [explorerMounted, setExplorerMounted] = useState(true);
 
   // Simple path routing for the gesture lab
   const isGestureLab = window.location.pathname === '/gesture-lab';
@@ -23,7 +23,7 @@ function App() {
   // Mount Explorer as soon as intro starts transitioning out
   const handleIntroComplete = () => {
     setExplorerMounted(true);
-    setTimeout(() => setIntroDone(true), 100);
+    setIntroDone(true);
   };
 
   return (

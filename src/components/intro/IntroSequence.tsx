@@ -117,6 +117,42 @@ export function IntroSequence({ onComplete }: IntroSequenceProps) {
         style={{ opacity: 0.8 }}
       />
 
+      {/* Instant Skip Button in Top-Right */}
+      <button
+        onClick={() => {
+          setExiting(true);
+          onComplete();
+        }}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '24px',
+          zIndex: 60,
+          background: 'rgba(15, 23, 42, 0.8)',
+          border: '1px solid rgba(34, 211, 238, 0.4)',
+          borderRadius: '4px',
+          color: '#38bdf8',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          padding: '8px 16px',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 0 16px rgba(34, 211, 238, 0.15)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(34, 211, 238, 0.15)';
+          e.currentTarget.style.borderColor = '#38bdf8';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(15, 23, 42, 0.8)';
+          e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.4)';
+        }}
+      >
+        SKIP INTRO →
+      </button>
+
       {/* Main Scientific Intro Container */}
       <div className="relative z-10 flex flex-col items-center gap-6 text-center px-6 max-w-xl">
         {/* Ocean Wave Vector Monogram */}
