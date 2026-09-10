@@ -112,11 +112,11 @@ def get_current_latest_timestamp() -> datetime | None:
 
 def check_upstream_latest() -> datetime | None:
     """Query Copernicus for the latest available timestamp (metadata only, fast)."""
-    import copernicusmarine
-    import warnings
-    warnings.filterwarnings("ignore")
-
     try:
+        import copernicusmarine
+        import warnings
+        warnings.filterwarnings("ignore")
+
         ds = copernicusmarine.open_dataset(
             dataset_id="cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i",
             variables=["thetao"],
@@ -139,12 +139,12 @@ def check_upstream_latest() -> datetime | None:
 
 def _fetch_one_dataset(name: str, config: dict, start_dt: datetime, end_dt: datetime) -> list[dict]:
     """Fetch a single Copernicus dataset using bulk .load(). Returns list of records."""
-    import copernicusmarine
-    import warnings
-    warnings.filterwarnings("ignore")
-
     logger.info(f"  Loading {name} (bulk)...")
     try:
+        import copernicusmarine
+        import warnings
+        warnings.filterwarnings("ignore")
+
         ds = copernicusmarine.open_dataset(
             dataset_id=config["dataset_id"],
             variables=config["variables"],
