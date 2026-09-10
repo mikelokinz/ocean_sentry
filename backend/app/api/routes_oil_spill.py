@@ -24,9 +24,10 @@ async def get_oil_spills():
     """
     Returns active oil spill incidents detected across maritime surveillance zones.
     """
+    spills = await oil_spill_service.get_active_spills_async()
     return {
-        "count": len(oil_spill_service.get_active_spills()),
-        "incidents": oil_spill_service.get_active_spills()
+        "count": len(spills),
+        "incidents": spills
     }
 
 @router.get("/ml/oil-spills/{spill_id}")
