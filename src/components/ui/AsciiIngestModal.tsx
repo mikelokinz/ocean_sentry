@@ -164,8 +164,9 @@ export function AsciiIngestModal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
-        backdropFilter: 'blur(8px)',
+        backgroundColor: 'rgba(2, 8, 22, 0.55)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',

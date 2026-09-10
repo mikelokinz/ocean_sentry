@@ -55,10 +55,11 @@ export function Navigation({
           display: 'flex', alignItems: 'center',
           padding: '0 24px',
           zIndex: 40,
-          background: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'linear-gradient(180deg, rgba(6, 16, 36, 0.48) 0%, rgba(2, 8, 20, 0.38) 100%)',
+          backdropFilter: 'blur(24px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+          borderBottom: '1px solid rgba(56, 189, 248, 0.16)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >

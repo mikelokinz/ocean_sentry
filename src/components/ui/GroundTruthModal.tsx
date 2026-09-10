@@ -99,9 +99,9 @@ export function GroundTruthModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(15, 23, 42, 0.7)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+        background: 'rgba(2, 8, 22, 0.55)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         animation: 'fadeIn 0.25s ease-out',
       }}
       onClick={(e) => {

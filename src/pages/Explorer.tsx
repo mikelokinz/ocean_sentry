@@ -833,12 +833,14 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             style={{
               maxWidth: '740px',
               width: '100%',
-              background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(9, 14, 26, 0.98) 100%)',
-              border: '1px solid rgba(56, 189, 248, 0.22)',
+              background: 'linear-gradient(135deg, rgba(6, 18, 42, 0.55) 0%, rgba(2, 9, 24, 0.65) 100%)',
+              backdropFilter: 'blur(28px) saturate(190%)',
+              WebkitBackdropFilter: 'blur(28px) saturate(190%)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
               borderRadius: '16px',
               padding: '28px 32px',
               color: '#e2e8f0',
-              boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px -10px rgba(14, 165, 233, 0.15)',
+              boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 35px rgba(56, 189, 248, 0.1)',
               fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -905,7 +907,9 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', marginBottom: '22px' }}>
               {/* Card 1: Hardware-Accelerated ML */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.65)',
+                background: 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 border: '1px solid rgba(148, 163, 184, 0.14)',
                 borderRadius: '10px',
                 padding: '16px',
@@ -954,7 +958,9 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
               {/* Card 2: In-Situ Telemetry */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.65)',
+                background: 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 border: '1px solid rgba(148, 163, 184, 0.14)',
                 borderRadius: '10px',
                 padding: '16px',
@@ -978,15 +984,15 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
                   </div>
                   <div>
                     <div style={{ fontSize: '9.5px', fontFamily: 'monospace', letterSpacing: '0.08em', color: '#34d399', fontWeight: 700, textTransform: 'uppercase' }}>
-                      IN-SITU OBSERVATIONS
+                      FLOAT & BUOY ARRAY
                     </div>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9' }}>
-                      Argo & Glider Telemetry Array
+                      Physical In-Situ Observation
                     </div>
                   </div>
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.55 }}>
-                  Continuous spatial ingestion and tracking of autonomous profiling floats, moored ocean buoys, and underwater glider trajectories across the Indian Ocean basin.
+                  Continuous real-time telemetry streams from autonomous ARGO CTD profiling floats and coastal IoT buoys (SST, Salinity, Wave Height, Current Speed, pH, and Depth).
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: 'auto', paddingTop: '4px' }}>
                   <span style={{ fontSize: '10px', fontFamily: 'monospace', padding: '2px 7px', borderRadius: '4px', background: 'rgba(52, 211, 153, 0.08)', color: '#6ee7b7', border: '1px solid rgba(52, 211, 153, 0.18)' }}>
@@ -1003,7 +1009,9 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
               {/* Card 3: Hydrodynamic Cross-Validation */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.65)',
+                background: 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 border: '1px solid rgba(148, 163, 184, 0.14)',
                 borderRadius: '10px',
                 padding: '16px',
@@ -1039,7 +1047,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: 'auto', paddingTop: '4px' }}>
                   <span style={{ fontSize: '10px', fontFamily: 'monospace', padding: '2px 7px', borderRadius: '4px', background: 'rgba(251, 191, 36, 0.08)', color: '#fde68a', border: '1px solid rgba(251, 191, 36, 0.18)' }}>
-                    INCOIS ROMS / NCODA
+                    Bilinear Collocation
                   </span>
                   <span style={{ fontSize: '10px', fontFamily: 'monospace', padding: '2px 7px', borderRadius: '4px', background: 'rgba(251, 191, 36, 0.08)', color: '#fde68a', border: '1px solid rgba(251, 191, 36, 0.18)' }}>
                     Variance Matrix
@@ -1052,7 +1060,9 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
               {/* Card 4: Spatial Controls */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.65)',
+                background: 'rgba(255, 255, 255, 0.04)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 border: '1px solid rgba(148, 163, 184, 0.14)',
                 borderRadius: '10px',
                 padding: '16px',
@@ -1102,7 +1112,9 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
             {/* Operational Telemetry Metrics Strip */}
             <div style={{
-              background: 'rgba(8, 14, 28, 0.85)',
+              background: 'rgba(4, 14, 32, 0.45)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
               border: '1px solid rgba(56, 189, 248, 0.16)',
               borderRadius: '10px',
               padding: '12px 18px',

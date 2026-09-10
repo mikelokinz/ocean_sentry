@@ -39,16 +39,16 @@ export function AnomalyDetailPanel({ anomaly, onClose }: AnomalyDetailPanelProps
         right: '16px',
         width: '260px',
         zIndex: 40,
-        background: 'rgba(2, 8, 18, 0.75)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '8px',
+        background: 'linear-gradient(135deg, rgba(8, 20, 44, 0.45) 0%, rgba(3, 10, 24, 0.55) 100%)',
+        border: '1px solid rgba(56, 189, 248, 0.22)',
+        borderRadius: '10px',
         padding: '16px',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
+        backdropFilter: 'blur(28px) saturate(190%)',
+        WebkitBackdropFilter: 'blur(28px) saturate(190%)',
         display: 'flex',
         flexDirection: 'column',
         gap: '12px',
-        boxShadow: `0 8px 32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1)`,
+        boxShadow: '0 16px 40px -10px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 20px rgba(34, 211, 238, 0.08)',
       }}
     >
       {/* Header */}

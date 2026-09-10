@@ -24,15 +24,17 @@ export function DiveButton({ isSubsurface, onDive, onSurface, disabled }: DiveBu
         alignItems: 'center',
         gap: '8px',
         background: isSubsurface
-          ? 'linear-gradient(135deg, rgba(34, 211, 238, 0.22) 0%, rgba(6, 78, 120, 0.35) 100%)'
-          : 'linear-gradient(135deg, rgba(3, 11, 28, 0.85) 0%, rgba(1, 6, 18, 0.92) 100%)',
+          ? 'linear-gradient(135deg, rgba(34, 211, 238, 0.25) 0%, rgba(6, 78, 120, 0.35) 100%)'
+          : 'linear-gradient(135deg, rgba(6, 18, 42, 0.45) 0%, rgba(2, 8, 20, 0.55) 100%)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         border: `1px solid ${isSubsurface ? 'rgba(34, 211, 238, 0.6)' : 'rgba(34, 211, 238, 0.35)'}`,
         borderRadius: '24px',
         padding: '8px 18px',
         cursor: disabled ? 'not-allowed' : 'pointer',
         boxShadow: isSubsurface
-          ? '0 0 20px rgba(34, 211, 238, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-          : '0 8px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(34, 211, 238, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+          ? '0 0 24px rgba(34, 211, 238, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25)'
+          : '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 16px rgba(34, 211, 238, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.18)',
         opacity: disabled ? 0.4 : 1,
         transition: 'all 0.2s ease',
       }}
