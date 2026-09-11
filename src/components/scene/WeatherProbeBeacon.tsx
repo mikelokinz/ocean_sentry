@@ -157,12 +157,18 @@ export function WeatherProbeBeacon({ probe, onClose }: WeatherProbeBeaconProps) 
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
                 {probe.temperature_c} <span style={{ fontSize: '9px', color: '#94a3b8' }}>°C</span>
               </div>
+              <div style={{ fontSize: '9px', color: '#94a3b8' }}>
+                Rain: {probe.precipitation_mm ?? 0.0} mm
+              </div>
             </div>
 
             <div>
-              <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase' }}>Pressure</div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#a855f7', marginTop: '2px' }}>
-                {probe.pressure_hpa} <span style={{ fontSize: '9px', color: '#94a3b8' }}>hPa</span>
+              <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase' }}>Ocean Current</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#06b6d4', marginTop: '2px' }}>
+                {probe.current_velocity_kts ?? 1.2} <span style={{ fontSize: '9px', color: '#94a3b8' }}>kts</span>
+              </div>
+              <div style={{ fontSize: '9px', color: '#94a3b8' }}>
+                Flow: {probe.current_direction_deg ?? 220}° ({probe.pressure_hpa} hPa)
               </div>
             </div>
           </div>

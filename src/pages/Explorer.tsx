@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, Suspense } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -35,11 +35,11 @@ import { IntelligenceSummary } from '../components/ui/IntelligenceSummary';
 import { OilSpillMarkers } from '../components/scene/OilSpillMarkers';
 import { OilSpillModal } from '../components/ui/OilSpillModal';
 import { WeatherParticleSystem } from '../components/scene/WeatherParticleSystem';
+import { OceanCurrentParticleSystem } from '../components/scene/OceanCurrentParticleSystem';
 import { TemperatureHeatmapTexture } from '../components/scene/TemperatureHeatmapTexture';
 import { WeatherProbeBeacon } from '../components/scene/WeatherProbeBeacon';
-import { WeatherCityMarkers } from '../components/scene/WeatherCityMarkers';
 import { WindyOverlay } from '../components/ui/WindyOverlay';
-import type { GlobeMode, WeatherMetric, WeatherGridResponse, WeatherProbeData } from '../types/weather';
+import type { GlobeMode, WeatherLayerType, WeatherFlowControls, WeatherGridResponse, WeatherProbeData } from '../types/weather';
 import { fetchWeatherGrid, fetchWeatherProbe } from '../services/oceanApi';
 import { xyzToLatLon } from '../utils/oceanCalc';
 import { useHandGesture } from '../hooks/useHandGesture';
@@ -81,9 +81,20 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
   const [showOilSpill, setShowOilSpill] = useState<boolean>(true);
   const [isOilSpillLabOpen, setIsOilSpillLabOpen] = useState<boolean>(false);
 
-  // Single-Globe Multi-State & Windy Weather Radar state
+  // Single-Globe Multi-State & Scientific Weather Radar state
   const [globeMode, setGlobeMode] = useState<GlobeMode>('ocean-sentry');
-  const [activeWeatherMetric, setActiveWeatherMetric] = useState<WeatherMetric>('wind');
+  const [activeWeatherLayers, setActiveWeatherLayers] = useState<Set<WeatherLayerType>>(
+    new Set<WeatherLayerType>(['wind', 'current'])
+  );
+  const [weatherFlowControls, setWeatherFlowControls] = useState<WeatherFlowControls>({
+    animationActive: true,
+    particleDensity: 2600,
+    flowSpeed: 1.0,
+    trailLength: 8,
+    validationMode: 'live',
+  });
+  const [activeTimestepIndex, setActiveTimestepIndex] = useState<number>(0);
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState<boolean>(false);
   const [weatherGrid, setWeatherGrid] = useState<WeatherGridResponse | null>(null);
   const [weatherProbe, setWeatherProbe] = useState<WeatherProbeData | null>(null);
 
@@ -312,16 +323,41 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
     setIsPHAnalyzerOpen(true);
   }, [selectedStation, STATIONS]);
 
-  // Weather grid auto-load & refresh on metric change
+  // Weather grid auto-load
   useEffect(() => {
-    fetchWeatherGrid(activeWeatherMetric)
+    fetchWeatherGrid()
       .then((data) => {
         if (data) setWeatherGrid(data);
       })
       .catch((err) => {
         console.warn('Weather grid load warning:', err);
       });
-  }, [activeWeatherMetric]);
+  }, []);
+
+  // Timeline forecast auto-advance loop
+  useEffect(() => {
+    if (!isTimelinePlaying || !weatherGrid?.timesteps?.length) return;
+    const interval = setInterval(() => {
+      setActiveTimestepIndex((prev) => (prev + 1) % weatherGrid.timesteps.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isTimelinePlaying, weatherGrid]);
+
+  const handleToggleWeatherLayer = useCallback((layerKey: WeatherLayerType) => {
+    setActiveWeatherLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(layerKey)) {
+        next.delete(layerKey);
+      } else {
+        next.add(layerKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleUpdateFlowControls = useCallback((updates: Partial<WeatherFlowControls>) => {
+    setWeatherFlowControls((prev) => ({ ...prev, ...updates }));
+  }, []);
 
   const handleWeatherProbe = useCallback(async (lat: number, lon: number) => {
     try {
@@ -381,6 +417,22 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
   const particleBoost = transitionState?.particleIntensity ?? 0;
   const effectiveShowParticles = showParticles || particleBoost > 0;
   const effectiveMarkersVisible = markersVisible || (transitionState?.markerVisibility ?? 0) > 0;
+
+  // Derived active and next timestep vector points for weather radar
+  const currentTimestepPoints = useMemo(() => {
+    if (weatherGrid?.timesteps && weatherGrid.timesteps.length > activeTimestepIndex) {
+      return weatherGrid.timesteps[activeTimestepIndex].points;
+    }
+    return weatherGrid?.points || [];
+  }, [weatherGrid, activeTimestepIndex]);
+
+  const nextTimestepPoints = useMemo(() => {
+    if (weatherGrid?.timesteps && weatherGrid.timesteps.length > 1) {
+      const nextIdx = (activeTimestepIndex + 1) % weatherGrid.timesteps.length;
+      return weatherGrid.timesteps[nextIdx].points;
+    }
+    return undefined;
+  }, [weatherGrid, activeTimestepIndex]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#000208', overflow: 'hidden' }}>
@@ -493,32 +545,48 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
           />
         )}
 
-        {/* ═══ WINDY-STYLE WEATHER RADAR LAYERS ═══ */}
+        {/* ═══ SCIENTIFIC WEATHER RADAR & VECTOR FLOW LAYERS ═══ */}
         {viewMode === 'global' && (
           <>
             <TemperatureHeatmapTexture
               visible={globeMode === 'weather-radar'}
-              metric={activeWeatherMetric}
-              gridPoints={weatherGrid?.points}
+              layer={
+                activeWeatherLayers.has('temperature')
+                  ? 'temperature'
+                  : activeWeatherLayers.has('precipitation')
+                  ? 'precipitation'
+                  : activeWeatherLayers.has('clouds')
+                  ? 'clouds'
+                  : 'none'
+              }
+              gridPoints={currentTimestepPoints}
             />
+            {/* Atmospheric Wind Streamline Flow System */}
             <WeatherParticleSystem
-              visible={globeMode === 'weather-radar'}
-              gridPoints={weatherGrid?.points}
-              speedMultiplier={1.2}
+              visible={globeMode === 'weather-radar' && activeWeatherLayers.has('wind') && weatherFlowControls.animationActive}
+              gridPoints={currentTimestepPoints}
+              nextGridPoints={nextTimestepPoints}
+              temporalAlpha={0}
+              speedMultiplier={weatherFlowControls.flowSpeed}
+              particleCount={weatherFlowControls.particleDensity}
+              trailLength={weatherFlowControls.trailLength}
+              validationMode={weatherFlowControls.validationMode}
+            />
+            {/* Marine Ocean Current Flow System */}
+            <OceanCurrentParticleSystem
+              visible={globeMode === 'weather-radar' && activeWeatherLayers.has('current') && weatherFlowControls.animationActive}
+              gridPoints={currentTimestepPoints}
+              nextGridPoints={nextTimestepPoints}
+              temporalAlpha={0}
+              speedMultiplier={weatherFlowControls.flowSpeed}
+              particleCount={Math.floor(weatherFlowControls.particleDensity * 0.75)}
+              trailLength={weatherFlowControls.trailLength}
+              validationMode={weatherFlowControls.validationMode}
             />
             {globeMode === 'weather-radar' && (
               <WeatherProbeBeacon
                 probe={weatherProbe}
                 onClose={() => setWeatherProbe(null)}
-              />
-            )}
-            {globeMode === 'weather-radar' && (
-              <WeatherCityMarkers
-                visible={globeMode === 'weather-radar'}
-                cities={weatherGrid?.cities}
-                onCityClick={(city) => {
-                  handleWeatherProbe(city.latitude, city.longitude);
-                }}
               />
             )}
             {globeMode === 'weather-radar' && (
@@ -663,13 +731,26 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         onOpenIngest={() => setIsIngestOpen(true)}
       />
 
-      {/* Windy-Style Real-time Weather Radar UI Overlay */}
+      {/* Scientific Weather Radar & Flow Field Control Panel */}
       {globeMode === 'weather-radar' && (
         <WindyOverlay
-          activeMetric={activeWeatherMetric}
-          onMetricChange={setActiveWeatherMetric}
+          activeLayers={activeWeatherLayers}
+          onToggleLayer={handleToggleWeatherLayer}
+          flowControls={weatherFlowControls}
+          onUpdateFlowControls={handleUpdateFlowControls}
+          timesteps={weatherGrid?.timesteps || []}
+          activeTimestepIndex={activeTimestepIndex}
+          onSelectTimestep={setActiveTimestepIndex}
+          isTimelinePlaying={isTimelinePlaying}
+          onToggleTimelinePlay={() => setIsTimelinePlaying((prev) => !prev)}
           onExitWeatherMode={() => handleGlobeModeChange('ocean-sentry')}
           probeActive={Boolean(weatherProbe)}
+          dataSourceInfo={{
+            source: weatherGrid?.source || 'Open-Meteo GFS & ECMWF Marine',
+            model: weatherGrid?.model || 'ECMWF IFS / NOAA GFS Seamless',
+            validTime: weatherGrid?.timesteps?.[activeTimestepIndex]?.time || weatherGrid?.timestamp || 'Live',
+            lastSync: weatherGrid?.timestamp ? new Date(weatherGrid.timestamp).toLocaleTimeString() : 'Live',
+          }}
         />
       )}
 
@@ -948,7 +1029,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
                 border: '1px solid rgba(56,189,248,0.35)',
               }}
             >
-              ACTIVE LAYER: {activeWeatherMetric.toUpperCase()}
+              LAYERS: {Array.from(activeWeatherLayers).join(' + ').toUpperCase()} · MODE: {weatherFlowControls.validationMode.toUpperCase()}
             </span>
           )}
           {webglGpu && (
