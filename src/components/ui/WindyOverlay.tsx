@@ -178,18 +178,18 @@ export function WindyOverlay({
           </span>
         </div>
 
-        {/* Gradient Bar */}
+        {/* Gradient Bar calibrated to Windy.com color map from reference image */}
         <div
           style={{
             height: '8px',
             borderRadius: '4px',
             background:
               activeMetric === 'wind'
-                ? 'linear-gradient(90deg, #38bdf8 0%, #10b981 30%, #f59e0b 60%, #f97316 80%, #ef4444 100%)'
+                ? 'linear-gradient(90deg, #1e1b4b 0%, #0284c7 15%, #06b6d4 30%, #22c55e 50%, #eab308 70%, #f97316 85%, #ef4444 100%)'
                 : activeMetric === 'temperature'
-                ? 'linear-gradient(90deg, #1e1b4b 0%, #0e7490 25%, #38bdf8 50%, #f59e0b 75%, #ef4444 100%)'
+                ? 'linear-gradient(90deg, #1e1b4b 0%, #0e7490 25%, #38bdf8 50%, #22c55e 65%, #f59e0b 80%, #ef4444 100%)'
                 : activeMetric === 'waves'
-                ? 'linear-gradient(90deg, #0284c7 0%, #14b8a6 30%, #f59e0b 65%, #ef4444 100%)'
+                ? 'linear-gradient(90deg, #0284c7 0%, #06b6d4 25%, #22c55e 50%, #f59e0b 75%, #ef4444 100%)'
                 : 'linear-gradient(90deg, #ef4444 0%, #f59e0b 35%, #38bdf8 70%, #6366f1 100%)',
             boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.5)',
           }}
@@ -209,9 +209,9 @@ export function WindyOverlay({
           {activeMetric === 'wind' && (
             <>
               <span>0</span>
-              <span>5</span>
-              <span>10</span>
-              <span>15</span>
+              <span>8</span>
+              <span>12</span>
+              <span>16</span>
               <span>20</span>
               <span>25</span>
               <span>30</span>

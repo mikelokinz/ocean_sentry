@@ -48,7 +48,7 @@ const WIND_CHANNELS: WindChannel[] = [
 ];
 
 const PARTICLES_PER_CHANNEL = 400; // Dense enough for flow, light enough for CPU
-const TRAIL_LENGTH = 0.04;
+const TRAIL_LENGTH = 0.07;
 
 interface ParticleRecord {
   channelIndex: number;
@@ -197,8 +197,8 @@ export function GlobalWindLayer({ depth = 0, radius = 2.02, activeSystems }: Glo
       const isActive = activeSystems.has(channel.type);
       
       if (isActive) {
-        // Advect
-        rec.progress += delta * channel.speed * rec.speedMod * 0.1;
+        // Advect with natural energetic fluid tempo
+        rec.progress += delta * channel.speed * rec.speedMod * 0.38;
         if (rec.progress > 1.0) {
           rec.progress = rec.progress % 1.0;
           // Re-roll lateral offsets when looping to feel organic

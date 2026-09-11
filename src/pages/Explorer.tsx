@@ -37,6 +37,7 @@ import { OilSpillModal } from '../components/ui/OilSpillModal';
 import { WeatherParticleSystem } from '../components/scene/WeatherParticleSystem';
 import { TemperatureHeatmapTexture } from '../components/scene/TemperatureHeatmapTexture';
 import { WeatherProbeBeacon } from '../components/scene/WeatherProbeBeacon';
+import { WeatherCityMarkers } from '../components/scene/WeatherCityMarkers';
 import { WindyOverlay } from '../components/ui/WindyOverlay';
 import type { GlobeMode, WeatherMetric, WeatherGridResponse, WeatherProbeData } from '../types/weather';
 import { fetchWeatherGrid, fetchWeatherProbe } from '../services/oceanApi';
@@ -509,6 +510,15 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
               <WeatherProbeBeacon
                 probe={weatherProbe}
                 onClose={() => setWeatherProbe(null)}
+              />
+            )}
+            {globeMode === 'weather-radar' && (
+              <WeatherCityMarkers
+                visible={globeMode === 'weather-radar'}
+                cities={weatherGrid?.cities}
+                onCityClick={(city) => {
+                  handleWeatherProbe(city.latitude, city.longitude);
+                }}
               />
             )}
             {globeMode === 'weather-radar' && (

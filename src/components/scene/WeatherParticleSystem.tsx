@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { latLonToXYZ } from '../../utils/oceanCalc';
@@ -10,8 +10,8 @@ interface WeatherParticleSystemProps {
   speedMultiplier?: number;
 }
 
-const NUM_PARTICLES = 3000;
-const TRAIL_LENGTH = 8; // Number of segments per particle streak
+const NUM_PARTICLES = 3600;
+const TRAIL_LENGTH = 12; // 12 line segments per particle streak for iconic Windy comet tail
 
 interface Particle {
   lat: number;
@@ -20,7 +20,6 @@ interface Particle {
   age: number;
   maxAge: number;
   trail: [number, number][]; // Array of past [lat, lon]
-  color: THREE.Color;
 }
 
 export function WeatherParticleSystem({
@@ -31,81 +30,114 @@ export function WeatherParticleSystem({
   const lineSegmentsRef = useRef<THREE.LineSegments>(null!);
   const opacityRef = useRef(0);
 
-  // Helper to sample wind vector (u, v) at any (lat, lon)
+  // Smooth Inverse-Distance-Weighted (IDW) 4-point spatial interpolator
   const sampleWind = useMemo(() => {
     return (lat: number, lon: number): [number, number, number, number] => {
-      // If we have real grid points from backend
-      if (gridPoints && gridPoints.length > 0) {
-        let closestDist = Infinity;
-        let bestU = 3.0;
-        let bestV = 2.0;
-        let bestSpeed = 15.0;
-        let bestTemp = 28.0;
+      if (gridPoints && gridPoints.length >= 4) {
+        // Collect closest 4 points for smooth bilinear/IDW interpolation
+        let d1 = Infinity, d2 = Infinity, d3 = Infinity, d4 = Infinity;
+        let p1 = gridPoints[0], p2 = gridPoints[0], p3 = gridPoints[0], p4 = gridPoints[0];
 
         for (let i = 0; i < gridPoints.length; i++) {
           const p = gridPoints[i];
           const dLat = p.latitude - lat;
           const dLon = p.longitude - lon;
           const distSq = dLat * dLat + dLon * dLon;
-          if (distSq < closestDist) {
-            closestDist = distSq;
-            bestU = p.u_wind;
-            bestV = p.v_wind;
-            bestSpeed = p.wind_speed_kts;
-            bestTemp = p.temperature_c;
+
+          if (distSq < d1) {
+            d4 = d3; p4 = p3;
+            d3 = d2; p3 = p2;
+            d2 = d1; p2 = p1;
+            d1 = distSq; p1 = p;
+          } else if (distSq < d2) {
+            d4 = d3; p4 = p3;
+            d3 = d2; p3 = p2;
+            d2 = distSq; p2 = p;
+          } else if (distSq < d3) {
+            d4 = d3; p4 = p3;
+            d3 = distSq; p3 = p;
+          } else if (distSq < d4) {
+            d4 = distSq; p4 = p;
           }
         }
-        return [bestU, bestV, bestSpeed, bestTemp];
+
+        // Compute normalized inverse distance weights
+        const eps = 0.001;
+        const w1 = 1.0 / (d1 + eps);
+        const w2 = 1.0 / (d2 + eps);
+        const w3 = 1.0 / (d3 + eps);
+        const w4 = 1.0 / (d4 + eps);
+        const totalW = w1 + w2 + w3 + w4;
+
+        const u = (p1.u_wind * w1 + p2.u_wind * w2 + p3.u_wind * w3 + p4.u_wind * w4) / totalW;
+        const v = (p1.v_wind * w1 + p2.v_wind * w2 + p3.v_wind * w3 + p4.v_wind * w4) / totalW;
+        const speed = (p1.wind_speed_kts * w1 + p2.wind_speed_kts * w2 + p3.wind_speed_kts * w3 + p4.wind_speed_kts * w4) / totalW;
+        const temp = (p1.temperature_c * w1 + p2.temperature_c * w2 + p3.temperature_c * w3 + p4.temperature_c * w4) / totalW;
+
+        return [u, v, speed, temp];
       }
 
-      // Mathematical fallback for Indian Ocean & Bay of Bengal trade winds / monsoon curl
-      const angleRad = (245.0 + Math.sin(lat * 0.15) * 20.0 + Math.cos(lon * 0.1) * 15.0) * (Math.PI / 180.0);
-      const speedKts = 14.0 + Math.sin(lat * 0.2 + lon * 0.1) * 6.0;
+      // Mathematical synoptic fallback matching user's Windy reference picture
+      // Somali jet curving into Arabian Sea, funneling south of Sri Lanka, Bay of Bengal cyclonic curl
+      let angleDeg = 245.0;
+      let speedKts = 18.0;
+
+      if (lat >= 5.0 && lat <= 18.0 && lon <= 58.0) {
+        // Somali Jet off Socotra/Yemen
+        angleDeg = 222.0 + (lat - 10.0) * 1.5;
+        speedKts = 28.0;
+      } else if (lat >= 3.0 && lat <= 9.0 && lon >= 75.0 && lon <= 86.0) {
+        // Sri Lanka accelerator
+        angleDeg = 258.0;
+        speedKts = 25.0;
+      } else if (lat >= 8.0 && lon >= 80.0) {
+        // Bay of Bengal curvature
+        angleDeg = lon < 88.0 ? 225.0 + (lat - 10.0) * 2.0 : 185.0 + (lon - 88.0) * 2.2;
+        speedKts = 18.0;
+      } else if (lat < -2.0) {
+        // SE Trade winds
+        angleDeg = 125.0;
+        speedKts = 19.0;
+      }
+
+      const angleRad = (angleDeg * Math.PI) / 180.0;
       const u = -Math.sin(angleRad) * (speedKts * 0.514444);
       const v = -Math.cos(angleRad) * (speedKts * 0.514444);
       return [u, v, speedKts, 28.5];
     };
   }, [gridPoints]);
 
-  // Color gradient function based on wind speed (Windy palette)
-  const getWindColor = (speedKts: number): THREE.Color => {
-    if (speedKts < 12) return new THREE.Color('#38bdf8'); // Calm cyan
-    if (speedKts < 20) return new THREE.Color('#10b981'); // Breezy emerald
-    if (speedKts < 28) return new THREE.Color('#f59e0b'); // Moderate amber
-    if (speedKts < 36) return new THREE.Color('#f97316'); // Strong orange
-    return new THREE.Color('#ef4444'); // Gale crimson
-  };
-
-  // Initialize particles across the tropical & subtropical oceanic expanse
+  // Initialize particles across the full Indian Ocean / Arabian Sea / Bay of Bengal basin
   const particles = useMemo<Particle[]>(() => {
     const list: Particle[] = [];
     for (let i = 0; i < NUM_PARTICLES; i++) {
-      const lat = -25.0 + Math.random() * 55.0; // Covers Indian Ocean, Bay of Bengal, Arabian Sea, South Seas
-      const lon = 45.0 + Math.random() * 75.0;
+      const lat = -14.0 + Math.random() * 42.0; // -14°S to 28°N
+      const lon = 40.0 + Math.random() * 64.0;  // 40°E to 104°E
       const [, , speed] = sampleWind(lat, lon);
+
       const trail: [number, number][] = [];
       for (let t = 0; t < TRAIL_LENGTH; t++) {
         trail.push([lat, lon]);
       }
+
       list.push({
         lat,
         lon,
         speed,
-        age: Math.random() * 100,
-        maxAge: 70 + Math.random() * 60,
+        age: Math.floor(Math.random() * 80),
+        maxAge: 65 + Math.floor(Math.random() * 45),
         trail,
-        color: getWindColor(speed),
       });
     }
     return list;
   }, [sampleWind]);
 
-  // Total vertices for line segments: NUM_PARTICLES * (TRAIL_LENGTH - 1) * 2 vertices per segment
-  const totalVertices = NUM_PARTICLES * (TRAIL_LENGTH - 1) * 2;
+  // Line segment vertex buffers: NUM_PARTICLES * (TRAIL_LENGTH - 1) * 2 vertices
+  const totalSegments = NUM_PARTICLES * (TRAIL_LENGTH - 1);
+  const totalVertices = totalSegments * 2;
   const positions = useMemo(() => new Float32Array(totalVertices * 3), [totalVertices]);
   const colors = useMemo(() => new Float32Array(totalVertices * 3), [totalVertices]);
 
-  // Setup geometry attributes
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -117,7 +149,7 @@ export function WeatherParticleSystem({
     if (!lineSegmentsRef.current) return;
 
     // Smooth opacity cross-fade
-    const targetOpacity = visible ? 0.95 : 0.0;
+    const targetOpacity = visible ? 0.98 : 0.0;
     opacityRef.current = THREE.MathUtils.lerp(opacityRef.current, targetOpacity, delta * 6.0);
     const mat = lineSegmentsRef.current.material as THREE.LineBasicMaterial;
     mat.opacity = opacityRef.current;
@@ -125,49 +157,63 @@ export function WeatherParticleSystem({
 
     if (!mat.visible) return;
 
-    const dt = Math.min(delta, 0.05) * speedMultiplier;
-    const radius = 2.032; // Just skimming Earth ocean surface
+    const dt = Math.min(delta, 0.033) * speedMultiplier;
+    const radius = 2.035; // Just skimming above Earth surface
     let vIndex = 0;
+
+    // Base luminous white/ice-blue color matching Windy streamline streaks
+    const whiteR = 0.96, whiteG = 0.99, whiteB = 1.0;
+    const cyanR = 0.45, cyanG = 0.90, cyanB = 0.98;
+    const goldR = 0.98, goldG = 0.85, goldB = 0.40;
 
     for (let i = 0; i < NUM_PARTICLES; i++) {
       const p = particles[i];
       p.age += 1;
 
-      // Respawn particle if lifetime exceeded
-      if (p.age > p.maxAge) {
-        p.lat = -20.0 + Math.random() * 50.0;
-        p.lon = 50.0 + Math.random() * 65.0;
+      // Respawn particle if age exceeded or drifted past bounds
+      if (
+        p.age > p.maxAge ||
+        p.lat < -14.5 || p.lat > 29.0 ||
+        p.lon < 39.0 || p.lon > 105.0
+      ) {
+        p.lat = -14.0 + Math.random() * 42.0;
+        p.lon = 40.0 + Math.random() * 64.0;
         p.age = 0;
-        p.maxAge = 70 + Math.random() * 60;
+        p.maxAge = 65 + Math.floor(Math.random() * 45);
         for (let t = 0; t < TRAIL_LENGTH; t++) {
           p.trail[t] = [p.lat, p.lon];
         }
       }
 
-      // Sample wind vector at current coordinate
+      // Sample continuous vector field at current coordinate
       const [u, v, speed] = sampleWind(p.lat, p.lon);
       p.speed = speed;
-      p.color = getWindColor(speed);
 
-      // Advect particle along spherical wind field
-      // Latitude velocity: v in m/s -> deg/s
-      // Longitude velocity: u in m/s adjusted for latitude convergence
-      const latCos = Math.max(0.15, Math.cos(p.lat * (Math.PI / 180.0)));
-      const dLat = (v * 0.0008) * dt * 60.0;
-      const dLon = ((u * 0.0008) / latCos) * dt * 60.0;
+      // Advect particle along spherical flow field
+      // Scaled so a 20-kt wind streams smoothly across the globe (~2.2 deg/s)
+      const latCos = Math.max(0.18, Math.cos((p.lat * Math.PI) / 180.0));
+      const speedScale = 0.0038;
+      const dLat = (v * speedScale) * dt * 60.0;
+      const dLon = ((u * speedScale) / latCos) * dt * 60.0;
 
       p.lat += dLat;
       p.lon += dLon;
 
-      // Push new position to trail buffer
+      // Update trail buffer
       p.trail.pop();
       p.trail.unshift([p.lat, p.lon]);
 
-      // Alpha lifecycle modulation (fade in at birth, fade out at death)
+      // Lifecycle fade envelope (smooth bell curve)
       const lifeRatio = p.age / p.maxAge;
       const lifeFade = Math.sin(lifeRatio * Math.PI);
 
-      // Populate line segments for this particle's trail
+      // Tint: higher speeds (>24 kts, like Somali Jet / Sri Lanka) get subtle golden sheen
+      const isHighSpeed = p.speed > 24.0;
+      const rHead = isHighSpeed ? goldR : (p.speed > 16.0 ? whiteR : cyanR);
+      const gHead = isHighSpeed ? goldG : (p.speed > 16.0 ? whiteG : cyanG);
+      const bHead = isHighSpeed ? goldB : (p.speed > 16.0 ? whiteB : cyanB);
+
+      // Write vertices and alpha for each trail segment
       for (let s = 0; s < TRAIL_LENGTH - 1; s++) {
         const [lat1, lon1] = p.trail[s];
         const [lat2, lon2] = p.trail[s + 1];
@@ -185,17 +231,17 @@ export function WeatherParticleSystem({
         positions[(vIndex + 1) * 3 + 1] = y2;
         positions[(vIndex + 1) * 3 + 2] = z2;
 
-        // Trail intensity fades towards the tail
-        const trailFade = 1.0 - (s / (TRAIL_LENGTH - 1)) * 0.7;
-        const finalAlpha = lifeFade * trailFade;
+        // Tapering alpha along trail (head is brightest, tail fades to zero)
+        const alpha1 = lifeFade * Math.pow(1.0 - s / (TRAIL_LENGTH - 1), 1.4);
+        const alpha2 = lifeFade * Math.pow(1.0 - (s + 1) / (TRAIL_LENGTH - 1), 1.4);
 
-        colors[vIndex * 3] = p.color.r * finalAlpha;
-        colors[vIndex * 3 + 1] = p.color.g * finalAlpha;
-        colors[vIndex * 3 + 2] = p.color.b * finalAlpha;
+        colors[vIndex * 3] = rHead * alpha1;
+        colors[vIndex * 3 + 1] = gHead * alpha1;
+        colors[vIndex * 3 + 2] = bHead * alpha1;
 
-        colors[(vIndex + 1) * 3] = p.color.r * finalAlpha * 0.7;
-        colors[(vIndex + 1) * 3 + 1] = p.color.g * finalAlpha * 0.7;
-        colors[(vIndex + 1) * 3 + 2] = p.color.b * finalAlpha * 0.7;
+        colors[(vIndex + 1) * 3] = rHead * alpha2;
+        colors[(vIndex + 1) * 3 + 1] = gHead * alpha2;
+        colors[(vIndex + 1) * 3 + 2] = bHead * alpha2;
 
         vIndex += 2;
       }
@@ -213,7 +259,7 @@ export function WeatherParticleSystem({
         opacity={0}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
-        linewidth={1.5}
+        linewidth={1.8}
       />
     </lineSegments>
   );

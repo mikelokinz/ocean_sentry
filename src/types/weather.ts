@@ -15,6 +15,14 @@ export interface WindGridPoint {
   source?: string;
 }
 
+export interface WeatherCityPoint {
+  name: string;
+  latitude: number;
+  longitude: number;
+  temperature_c: number;
+  country: string;
+}
+
 export interface WeatherGridResponse {
   timestamp: string;
   metric: string;
@@ -26,6 +34,7 @@ export interface WeatherGridResponse {
   };
   points_count: number;
   points: WindGridPoint[];
+  cities?: WeatherCityPoint[];
   calibrated_station?: string;
   provider?: string;
 }
