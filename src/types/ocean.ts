@@ -121,3 +121,45 @@ export interface OilSpillRecord {
   };
   water_temp_c?: number;
 }
+
+
+// ── Weather Radar Mode Types (Windy-Style) ──────────────────────────────────
+
+export type GlobeMode = 'ocean-sentry' | 'weather-radar';
+export type WeatherOverlayType = 'wind' | 'temperature' | 'waves' | 'pressure';
+export type WeatherAltitude = 'surface' | '850hpa' | '500hpa' | '250hpa';
+
+export interface WeatherGridData {
+  width: number;
+  height: number;
+  lats: number[];
+  lons: number[];
+  u: number[];
+  v: number[];
+  speed: number[];
+  temp: number[];
+  pressure: number[];
+  minSpeed: number;
+  maxSpeed: number;
+  altitude: string;
+  timestamp: string;
+  source: string;
+}
+
+export interface WeatherPointData {
+  latitude: number;
+  longitude: number;
+  temperature: number;
+  apparentTemperature: number;
+  humidity: number;
+  pressure: number;
+  windSpeed: number; // km/h
+  windDirection: number; // degrees
+  windGusts: number;
+  weatherCode: number;
+  waveHeight?: number;
+  waveDirection?: number;
+  wavePeriod?: number;
+  timestamp: string;
+  source: string;
+}

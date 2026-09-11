@@ -7,9 +7,11 @@ interface NavigationProps {
   onOpenIngest?: () => void;
   anomalyCount?: number;
   stationCount?: number;
+  globeMode?: 'ocean-sentry' | 'weather-radar';
+  onGlobeModeChange?: (mode: 'ocean-sentry' | 'weather-radar') => void;
 }
 
-const NAV_ITEMS = ['EXPLORE', 'OBSERVATIONS', 'MODELS', 'ANALYTICS', 'ABOUT'];
+const NAV_ITEMS = ['EXPLORE', 'WEATHER RADAR', 'OBSERVATIONS', 'MODELS', 'ANALYTICS', 'ABOUT'];
 
 export function Navigation({
   onNavClick,
@@ -18,10 +20,21 @@ export function Navigation({
   onOpenIngest,
   anomalyCount = 0,
   stationCount = 0,
+  globeMode = 'ocean-sentry',
+  onGlobeModeChange,
 }: NavigationProps) {
-  const [activeItem, setActiveItem] = useState('EXPLORE');
+  const [activeItem, setActiveItem] = useState(globeMode === 'weather-radar' ? 'WEATHER RADAR' : 'EXPLORE');
   const [menuOpen, setMenuOpen] = useState(false);
   const [timeStr, setTimeStr] = useState('');
+
+  // Sync active item if external globeMode changes
+  useEffect(() => {
+    if (globeMode === 'weather-radar') {
+      setActiveItem('WEATHER RADAR');
+    } else if (activeItem === 'WEATHER RADAR') {
+      setActiveItem('EXPLORE');
+    }
+  }, [globeMode]);
 
   // Live UTC Mission Clock
   useEffect(() => {
@@ -40,6 +53,11 @@ export function Navigation({
 
   const handleItemClick = (item: string) => {
     setActiveItem(item);
+    if (item === 'WEATHER RADAR') {
+      onGlobeModeChange?.('weather-radar');
+    } else if (item === 'EXPLORE') {
+      onGlobeModeChange?.('ocean-sentry');
+    }
     onNavClick?.(item);
     setMenuOpen(false);
   };
@@ -153,10 +171,36 @@ export function Navigation({
                   }
                 }}
               >
-                {isActive && (
+                {isActive && item !== 'WEATHER RADAR' && (
                   <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#38bdf8' }} />
                 )}
-                {item}
+                {item === 'WEATHER RADAR' && (
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: '#38bdf8',
+                      boxShadow: '0 0 8px #38bdf8',
+                    }}
+                  />
+                )}
+                <span>{item}</span>
+                {item === 'WEATHER RADAR' && (
+                  <span
+                    style={{
+                      fontSize: '8.5px',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'rgba(56, 189, 248, 0.2)',
+                      color: '#38bdf8',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    LIVE
+                  </span>
+                )}
               </button>
             );
           })}

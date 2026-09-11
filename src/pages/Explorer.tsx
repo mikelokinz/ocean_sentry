@@ -34,6 +34,13 @@ import { AnomalyDetailPanel } from '../components/ui/AnomalyDetailPanel';
 import { IntelligenceSummary } from '../components/ui/IntelligenceSummary';
 import { OilSpillMarkers } from '../components/scene/OilSpillMarkers';
 import { OilSpillModal } from '../components/ui/OilSpillModal';
+import { WeatherParticleSystem } from '../components/scene/WeatherParticleSystem';
+import { TemperatureHeatmapTexture } from '../components/scene/TemperatureHeatmapTexture';
+import { WeatherProbeBeacon } from '../components/scene/WeatherProbeBeacon';
+import { WindyOverlay } from '../components/ui/WindyOverlay';
+import type { GlobeMode, WeatherMetric, WeatherGridResponse, WeatherProbeData } from '../types/weather';
+import { fetchWeatherGrid, fetchWeatherProbe } from '../services/oceanApi';
+import { xyzToLatLon } from '../utils/oceanCalc';
 import { useHandGesture } from '../hooks/useHandGesture';
 import { useOceanData } from '../hooks/useOceanData';
 import type { Station, OceanLayer, OceanParameter, DepthLevel, CameraStage, OilSpillRecord } from '../types/ocean';
@@ -72,6 +79,12 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
   const [selectedOilSpill, setSelectedOilSpill] = useState<OilSpillRecord | null>(null);
   const [showOilSpill, setShowOilSpill] = useState<boolean>(true);
   const [isOilSpillLabOpen, setIsOilSpillLabOpen] = useState<boolean>(false);
+
+  // Single-Globe Multi-State & Windy Weather Radar state
+  const [globeMode, setGlobeMode] = useState<GlobeMode>('ocean-sentry');
+  const [activeWeatherMetric, setActiveWeatherMetric] = useState<WeatherMetric>('wind');
+  const [weatherGrid, setWeatherGrid] = useState<WeatherGridResponse | null>(null);
+  const [weatherProbe, setWeatherProbe] = useState<WeatherProbeData | null>(null);
 
   // Local Ocean / Dive state
   const [viewMode, setViewMode] = useState<'global' | 'localOcean'>('global');
@@ -297,11 +310,48 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
     setPhStation(target);
     setIsPHAnalyzerOpen(true);
   }, [selectedStation, STATIONS]);
+
+  // Weather grid auto-load & refresh on metric change
+  useEffect(() => {
+    fetchWeatherGrid(activeWeatherMetric)
+      .then((data) => {
+        if (data) setWeatherGrid(data);
+      })
+      .catch((err) => {
+        console.warn('Weather grid load warning:', err);
+      });
+  }, [activeWeatherMetric]);
+
+  const handleWeatherProbe = useCallback(async (lat: number, lon: number) => {
+    try {
+      const data = await fetchWeatherProbe(lat, lon);
+      if (data) {
+        setWeatherProbe(data);
+      }
+    } catch (err) {
+      console.warn('Weather probe failed:', err);
+    }
+  }, []);
+
+  const handleGlobeModeChange = useCallback((mode: GlobeMode) => {
+    setGlobeMode(mode);
+    if (mode === 'weather-radar') {
+      setSelectedStation(null);
+      setSelectedAnomaly(null);
+      setSelectedOilSpill(null);
+      if (!weatherProbe) {
+        handleWeatherProbe(16.35, 82.70);
+      }
+    }
+  }, [handleWeatherProbe, weatherProbe]);
+
   // Hook up new gesture events
   useEffect(() => {
     hand.onCloseEvent(() => {
       if (viewMode === 'localOcean') {
         handleExitLocalOcean();
+      } else if (globeMode === 'weather-radar') {
+        handleGlobeModeChange('ocean-sentry');
       } else if (isSubsurface) {
         handleReturnToSurface();
       } else if (selectedAnomaly) {
@@ -310,7 +360,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         setSelectedStation(null);
       }
     });
-  }, [hand, viewMode, isSubsurface, selectedAnomaly, selectedStation, handleExitLocalOcean, handleReturnToSurface]);
+  }, [hand, viewMode, globeMode, isSubsurface, selectedAnomaly, selectedStation, handleExitLocalOcean, handleGlobeModeChange, handleReturnToSurface]);
 
   useEffect(() => {
     hand.onRecenterEvent(() => {
@@ -375,7 +425,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         {/* Ocean current streamlines */}
         {viewMode === 'global' && (
           <OceanCurrents
-            visible={effectiveShowParticles}
+            visible={effectiveShowParticles && globeMode === 'ocean-sentry'}
             parameter={parameter}
             depth={depth}
             meanCurrentSpeed={meanCurrentSpeed}
@@ -388,7 +438,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             stations={STATIONS}
             layer={layer}
             parameter={parameter}
-            visible={effectiveMarkersVisible}
+            visible={effectiveMarkersVisible && globeMode === 'ocean-sentry'}
           />
         )}
 
@@ -400,7 +450,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             parameter={parameter}
             depth={depth}
             selectedId={selectedStation?.id ?? null}
-            visible={effectiveMarkersVisible && !isSubsurface && showArgo}
+            visible={effectiveMarkersVisible && !isSubsurface && showArgo && globeMode === 'ocean-sentry'}
             onSelect={handleStationSelect}
             onClickEvent={hand.onClickEvent}
             handPointerRef={hand.pointerRef}
@@ -417,7 +467,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             parameter={parameter}
             depth={depth}
             selectedStation={selectedStation}
-            visible={showGlider}
+            visible={showGlider && globeMode === 'ocean-sentry'}
             onSelect={handleStationSelect}
             onHover={(s, _x, _y) => {
               if (s) {
@@ -429,7 +479,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
         {/* India EEZ Overlay */}
         {viewMode === 'global' && (
-          <IndiaEEZ visible={showEEZ} />
+          <IndiaEEZ visible={showEEZ && globeMode === 'ocean-sentry'} />
         )}
 
         {/* Oil Spill ML Hazard Layer (3D Balls on Globe) */}
@@ -437,9 +487,43 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
           <OilSpillMarkers
             spills={oilSpills}
             selectedId={selectedOilSpill?.id ?? null}
-            visible={showOilSpill}
+            visible={showOilSpill && globeMode === 'ocean-sentry'}
             onSelect={handleOilSpillSelect}
           />
+        )}
+
+        {/* ═══ WINDY-STYLE WEATHER RADAR LAYERS ═══ */}
+        {viewMode === 'global' && (
+          <>
+            <TemperatureHeatmapTexture
+              visible={globeMode === 'weather-radar'}
+              metric={activeWeatherMetric}
+              gridPoints={weatherGrid?.points}
+            />
+            <WeatherParticleSystem
+              visible={globeMode === 'weather-radar'}
+              gridPoints={weatherGrid?.points}
+              speedMultiplier={1.2}
+            />
+            {globeMode === 'weather-radar' && (
+              <WeatherProbeBeacon
+                probe={weatherProbe}
+                onClose={() => setWeatherProbe(null)}
+              />
+            )}
+            {globeMode === 'weather-radar' && (
+              <mesh
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const [lat, lon] = xyzToLatLon(e.point.x, e.point.y, e.point.z);
+                  handleWeatherProbe(lat, lon);
+                }}
+              >
+                <sphereGeometry args={[2.02, 48, 48]} />
+                <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+              </mesh>
+            )}
+          </>
         )}
 
         {/* Depth-specific markers (subsurface mode) */}
@@ -448,7 +532,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
             observations={depthObservations}
             anomalies={depthAnomalies}
             depth={depth}
-            visible={isSubsurface && !depthLoading}
+            visible={isSubsurface && !depthLoading && globeMode === 'ocean-sentry'}
             onAnomalySelect={handleAnomalySelect}
             selectedAnomalyId={selectedAnomaly ? `${selectedAnomaly.station_id}-${selectedAnomaly.depth}-${selectedAnomaly.timestamp}` : null}
           />
@@ -456,7 +540,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
 
         {/* Subsurface underwater environment */}
         {viewMode === 'global' && (
-          <SubsurfaceEnvironment depth={depth} visible={isSubsurface} />
+          <SubsurfaceEnvironment depth={depth} visible={isSubsurface && globeMode === 'ocean-sentry'} />
         )}
 
         <CameraController
@@ -488,7 +572,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         {viewMode === 'global' && (
           <OrbitControls
             ref={orbitRef}
-            enabled={isExploring && !selectedStation && !selectedAnomaly && !isTransitioning}
+            enabled={(isExploring && !selectedStation && !selectedAnomaly && !isTransitioning) || globeMode === 'weather-radar'}
             enablePan={false}
             minDistance={2.8}
             maxDistance={14.0}
@@ -530,7 +614,16 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       
       {/* Top Navigation HUD */}
       <Navigation
+        globeMode={globeMode}
+        onGlobeModeChange={handleGlobeModeChange}
         onNavClick={(section) => {
+          if (section === 'WEATHER RADAR') {
+            handleGlobeModeChange('weather-radar');
+            return;
+          }
+          if (globeMode === 'weather-radar') {
+            setGlobeMode('ocean-sentry');
+          }
           if (section === 'EXPLORE') {
             if (viewMode === 'localOcean') handleExitLocalOcean();
             if (isSubsurface) handleReturnToSurface();
@@ -560,10 +653,18 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
         onOpenIngest={() => setIsIngestOpen(true)}
       />
 
-
+      {/* Windy-Style Real-time Weather Radar UI Overlay */}
+      {globeMode === 'weather-radar' && (
+        <WindyOverlay
+          activeMetric={activeWeatherMetric}
+          onMetricChange={setActiveWeatherMetric}
+          onExitWeatherMode={() => handleGlobeModeChange('ocean-sentry')}
+          probeActive={Boolean(weatherProbe)}
+        />
+      )}
 
       {/* Anomaly Detail Panel — Top Right (when anomaly selected) */}
-      {selectedAnomaly && (
+      {selectedAnomaly && globeMode === 'ocean-sentry' && (
         <AnomalyDetailPanel
           anomaly={selectedAnomaly}
           onClose={() => setSelectedAnomaly(null)}
@@ -582,7 +683,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       )}
 
       {/* Dive Button — Bottom Center (when at surface and exploring) */}
-      {showControls && isExploring && !isSubsurface && (
+      {showControls && isExploring && !isSubsurface && globeMode === 'ocean-sentry' && (
         <DiveButton
           isSubsurface={false}
           onDive={handleDive}
@@ -591,7 +692,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       )}
 
       {/* Subsurface HUD — Right side when diving */}
-      {isSubsurface && (
+      {isSubsurface && globeMode === 'ocean-sentry' && (
         <SubsurfaceHUD
           depth={depth}
           observationCount={depthObservations.length}
@@ -604,7 +705,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       )}
 
       {/* ═══ LEFT SIDEBAR CONTAINER ═══ */}
-      {showControls && (
+      {showControls && globeMode === 'ocean-sentry' && (
         <div
           style={{
             position: 'absolute',
@@ -666,7 +767,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       )}
 
       {/* Scientific Station Information Panel — Right Side */}
-      {(selectedStation || exploringStation) && (
+      {(selectedStation || exploringStation) && globeMode === 'ocean-sentry' && (
         <div style={{ position: 'absolute', right: '18px', top: '64px', zIndex: 35 }}>
           <StationPanel
             station={exploringStation || selectedStation!}
@@ -684,7 +785,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       )}
 
       {/* Timeline Controls — Bottom Center */}
-      {showControls && (
+      {showControls && globeMode === 'ocean-sentry' && (
         <div style={{ position: 'absolute', bottom: '60px', left: '50%', transform: 'translateX(-50%)', zIndex: 35 }}>
           <Timeline
             timeIndex={timeIndex}
@@ -716,7 +817,7 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
       />
 
       {/* Depth Indicator Bar — Right side when depth > 0 (surface mode only) */}
-      {depth > 0 && showControls && !isSubsurface && (
+      {depth > 0 && showControls && !isSubsurface && globeMode === 'ocean-sentry' && (
         <div
           className="sci-panel animate-fade-in"
           style={{
@@ -791,18 +892,20 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
               width: 5,
               height: 5,
               borderRadius: '50%',
-              background: dataSource === 'api' ? '#22d3ee' : dataSource === 'loading' ? '#f59e0b' : '#64748b',
-              boxShadow: dataSource === 'api' ? '0 0 6px #22d3ee' : 'none',
+              background: globeMode === 'weather-radar' ? '#38bdf8' : dataSource === 'api' ? '#22d3ee' : dataSource === 'loading' ? '#f59e0b' : '#64748b',
+              boxShadow: globeMode === 'weather-radar' ? '0 0 8px #38bdf8' : dataSource === 'api' ? '0 0 6px #22d3ee' : 'none',
             }}
           />
           <span style={{ fontSize: '7.5px', color: '#94a3b8', letterSpacing: '0.12em', fontFamily: 'monospace', fontWeight: 600 }}>
-            {dataLoading
+            {globeMode === 'weather-radar'
+              ? 'OPEN-METEO GFS/ECMWF REAL-TIME RADAR · 3,000+ GPU PARTICLES'
+              : dataLoading
               ? 'CONNECTING...'
               : dataSource === 'api'
               ? 'INCOIS DATA GRID + ARGO · ML ONLINE'
               : 'OFFLINE DEMO DATA'}
           </span>
-          {dataSource === 'api' && (
+          {globeMode === 'ocean-sentry' && dataSource === 'api' && (
             <span
               style={{
                 fontSize: '7px',
@@ -819,6 +922,23 @@ export default function Explorer({ initialStage = 'exploration' }: ExplorerProps
               {deviceInfo?.device === 'cuda'
                 ? `GPU: ${deviceInfo.gpu_name || 'NVIDIA RTX 5060'} (CUDA)`
                 : `DEVICE: ${deviceInfo?.device_name || 'AUTOENCODER GPU'}`}
+            </span>
+          )}
+          {globeMode === 'weather-radar' && (
+            <span
+              style={{
+                fontSize: '7px',
+                color: '#38bdf8',
+                letterSpacing: '0.08em',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                background: 'rgba(56,189,248,0.15)',
+                padding: '1px 5px',
+                borderRadius: '3px',
+                border: '1px solid rgba(56,189,248,0.35)',
+              }}
+            >
+              ACTIVE LAYER: {activeWeatherMetric.toUpperCase()}
             </span>
           )}
           {webglGpu && (

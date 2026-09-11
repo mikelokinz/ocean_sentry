@@ -147,6 +147,18 @@ export function latLonToXYZ(lat: number, lon: number, radius: number): [number, 
   ];
 }
 
+export function xyzToLatLon(x: number, y: number, z: number): [number, number] {
+  const radius = Math.sqrt(x * x + y * y + z * z);
+  if (radius === 0) return [0, 0];
+  const phi = Math.acos(clamp(y / radius, -1, 1));
+  const lat = 90 - phi * (180 / Math.PI);
+  const theta = Math.atan2(z, -x);
+  let lon = theta * (180 / Math.PI) - 180;
+  while (lon < -180) lon += 360;
+  while (lon > 180) lon -= 360;
+  return [parseFloat(lat.toFixed(3)), parseFloat(lon.toFixed(3))];
+}
+
 // ── Color helpers ─────────────────────────────────────────────────────────────
 export function statusColor(s: AnomalyStatus, alpha = 1): string {
   const rgb = s === 'critical' ? '239,68,68' : s === 'warning' ? '245,158,11' : '34,211,238';

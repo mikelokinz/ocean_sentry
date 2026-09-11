@@ -1,4 +1,5 @@
-import type { Station, AnomalyStatus, OilSpillRecord } from '../types/ocean';
+import type { Station, AnomalyStatus, OilSpillRecord, WeatherGridData, WeatherPointData } from '../types/ocean';
+import type { WeatherGridResponse, WeatherProbeData } from '../types/weather';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const STREAM_URL = import.meta.env.VITE_ARGO_STREAM_URL;
@@ -448,6 +449,22 @@ export async function triggerOilSpillAlert(spillId: string, message?: string): P
   return await response.json();
 }
 
+export async function fetchWeatherGrid(metric: string = 'wind'): Promise<WeatherGridResponse> {
+  try {
+    return await fetchJson<WeatherGridResponse>(`/api/weather/grid?metric=${metric}`);
+  } catch (err) {
+    console.error('Error fetching weather grid:', err);
+    throw err;
+  }
+}
+
+export async function fetchWeatherProbe(lat: number, lon: number): Promise<WeatherProbeData> {
+  try {
+    return await fetchJson<WeatherProbeData>(`/api/weather/probe?lat=${lat}&lon=${lon}`);
+  } catch (err) {
+    console.error(`Error probing weather for (${lat}, ${lon}):`, err);
+    throw err;
+  }
+}
+
 export type { ApiStation, ComparisonRecord, HealthResponse };
-
-
